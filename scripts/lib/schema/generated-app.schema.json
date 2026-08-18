@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GeneratedApp",
+  "description": "Step 2 output: file contents for the generated webapp.",
+  "type": "object",
+  "required": ["files"],
+  "additionalProperties": false,
+  "properties": {
+    "files": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Map of relative file path to file content"
+    }
+  }
+}

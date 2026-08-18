@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AppPlan",
+  "description": "Step 1 output: structured plan for a neuroimaging webapp. The 'analysis' field follows ASTRA spec; scaffolding fields are monorepo-specific.",
+  "type": "object",
+  "required": ["name", "title", "description", "imagingModality", "viewerType", "sharedComponents", "workerMessages", "fileManifest", "registryFields", "analysis"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "App directory name (lowercase kebab-case)"
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable title"
+    },
+    "description": {
+      "type": "string",
+      "description": "One-line description for the registry"
+    },
+    "imagingModality": {
+      "type": "string",
+      "enum": ["nifti", "dicom", "generic"],
+      "description": "Primary imaging format"
+    },
+    "viewerType": {
+      "type": "string",
+      "enum": ["2d-slice", "3d-volume", "overlay", "comparison"],
+      "description": "Viewer layout mode"
+    },
+    "sharedComponents": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Named exports from @neurodesk/webapp-components to import"
+    },
+    "workerMessages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "payload"],
+        "properties": {
+          "type": { "type": "string" },
+          "payload": { "type": "string", "description": "TS type literal for the message payload" }
+        }
+      },
+      "description": "Worker message protocol for the inference pipeline"
+    },
+    "fileManifest": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Relative file paths to generate (e.g. src/main.tsx, src/App.tsx)"
+    },
+    "registryFields": {
+      "type": "object",
+      "required": ["runtime", "supportStatus", "shell", "toolchains"],
+      "properties": {
+        "runtime": { "type": "string", "enum": ["static-esm", "react-vite", "static-esm-rust"] },
+        "modelManifest": { "type": ["string", "null"] },
+        "supportStatus": { "type": "string", "enum": ["experimental", "active"] },
+        "shell": { "type": "string", "enum": ["static-html", "imaging-workspace"] },
+        "toolchains": { "type": "array", "items": { "type": "string", "enum": ["node", "rust-wasm"] } }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "description": "ASTRA Analysis spec describing the scientific workflow (inputs, outputs, decisions). Validated against the ASTRA JSON Schema.",
+      "properties": {
+        "version": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "inputs": { "type": "array" },
+        "outputs": { "type": "array" },
+        "decisions": { "type": "object" }
+      }
+    }
+  }
+}
