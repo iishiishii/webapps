@@ -1,6 +1,6 @@
 import React from 'react';
 import { X } from 'lucide-react';
-import NiivueViewer from './NiivueViewer';
+import NiivueViewer from '@neurodesk/webapp-components/viewer/react';
 
 interface DicomViewerModalProps {
   isOpen: boolean;

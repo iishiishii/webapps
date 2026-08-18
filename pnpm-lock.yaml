@@ -390,7 +390,17 @@ importers:
 
   packages/analytics: {}
 
-  packages/components: {}
+  packages/components:
+    dependencies:
+      '@niivue/dcm2niix':
+        specifier: '>=1.0.0'
+        version: 1.2.0
+      '@niivue/niivue':
+        specifier: '>=0.62.0'
+        version: 0.68.2
+      react:
+        specifier: '>=18.0.0'
+        version: 19.2.7
 
   packages/runtime-support: {}
 

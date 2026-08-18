@@ -1,35 +1,63 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Loader2, AlertTriangle, Camera, Download, RotateCcw } from 'lucide-react';
 import { Niivue, SLICE_TYPE, MULTIPLANAR_TYPE, SHOW_RENDER, DRAG_MODE } from '@niivue/niivue';
 import { Dcm2niix } from '@niivue/dcm2niix';
+
+// Inline SVG icons (replaces lucide-react dependency)
+const SpinnerIcon = () => (
+  <svg className="h-8 w-8 animate-spin mx-auto mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+  </svg>
+);
+const WarningIcon = () => (
+  <svg className="h-8 w-8 mx-auto mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+    <path d="M12 9v4" /><path d="M12 17h.01" />
+  </svg>
+);
+const CameraIcon = () => (
+  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+    <circle cx="12" cy="13" r="3" />
+  </svg>
+);
+const DownloadIcon = () => (
+  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" />
+  </svg>
+);
+const ResetIcon = () => (
+  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" />
+  </svg>
+);
 
 export interface VolumeInfo {
   name: string;
   index: number;
 }
 
+export type ViewMode = 'multiplanar' | 'axial' | 'coronal' | 'sagittal' | 'render';
+
 export interface NiivueViewerProps {
-  /** Local File objects (DICOM — will be converted via dcm2niix) */
+  /** Local File objects (DICOM files will be converted via dcm2niix) */
   files?: File[];
-  /** Remote URLs (NIfTI/DICOM — loaded directly by NiiVue) */
+  /** Remote URLs (NIfTI/DICOM loaded directly by NiiVue) */
   urls?: { url: string; name: string }[];
   /** When true the viewer initialises and renders. Set false to tear down. */
   active: boolean;
   /** Optional fixed height for the canvas container (default: flex-1) */
   height?: string;
-  /** Called when converted volumes are discovered (after dcm2niix). Allows parent to build a sidebar. */
+  /** Called when converted volumes are discovered (after dcm2niix). */
   onVolumesDiscovered?: (volumes: VolumeInfo[]) => void;
   /** When set, parent controls which volume is displayed. Hides the internal volume dropdown. */
   externalVolumeIndex?: number;
-  /** Called with the Niivue instance once ready (and null on cleanup). Useful for syncing viewers. */
+  /** Called with the Niivue instance once ready (and null on cleanup). */
   onNiivueReady?: (nv: Niivue | null) => void;
   /** When set, parent controls the view mode and hides the internal view mode buttons. */
   externalViewMode?: ViewMode;
   /** Called when the user changes the view mode internally (only when externalViewMode is not set). */
   onViewModeChange?: (mode: ViewMode) => void;
 }
-
-export type ViewMode = 'multiplanar' | 'axial' | 'coronal' | 'sagittal' | 'render';
 
 export const VIEW_MODES: { key: ViewMode; label: string; sliceType: number }[] = [
   { key: 'multiplanar', label: '3-Plane', sliceType: SLICE_TYPE.MULTIPLANAR },
@@ -60,7 +88,6 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
   const [selectedVolumeIndex, setSelectedVolumeIndex] = useState(0);
   const [viewerReady, setViewerReady] = useState(false);
 
-  // Toolbar state
   const [activeView, setActiveView] = useState<ViewMode>('multiplanar');
   const [windowMin, setWindowMin] = useState(0);
   const [windowMax, setWindowMax] = useState(100);
@@ -92,7 +119,6 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
     return () => ro.disconnect();
   }, [active]);
 
-  // Clean up NiiVue instance
   const cleanup = useCallback(() => {
     if (nvRef.current) {
       try {
@@ -108,7 +134,6 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
     }
   }, [onNiivueReady]);
 
-  // Load a specific volume into niivue and update windowing state
   const loadVolume = useCallback(async (nv: Niivue, file: File) => {
     const url = URL.createObjectURL(file);
     try {
@@ -127,7 +152,6 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
     }
   }, []);
 
-  // Load a volume from a remote URL directly into NiiVue
   const loadVolumeFromUrl = useCallback(async (nv: Niivue, volumeUrl: string, name: string) => {
     await nv.loadVolumes([{ url: volumeUrl, name }]);
 
@@ -260,7 +284,6 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
   const lastAppliedExternalIndex = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (externalVolumeIndex == null || !viewerReady || !nvRef.current || !volumes[externalVolumeIndex]) return;
-    // Skip if we already applied this exact index
     if (externalVolumeIndex === lastAppliedExternalIndex.current) return;
     lastAppliedExternalIndex.current = externalVolumeIndex;
     handleVolumeChangeInternal(externalVolumeIndex);
@@ -277,8 +300,6 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
     await loadVolume(nvRef.current, volumes[index]);
   };
 
-  // --- Control handlers ---
-
   const handleViewChange = (mode: ViewMode) => {
     const nv = nvRef.current;
     if (!nv) return;
@@ -290,7 +311,6 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
     }
   };
 
-  // Respond to external view mode changes
   useEffect(() => {
     if (externalViewMode == null || !nvRef.current) return;
     const config = VIEW_MODES.find(v => v.key === externalViewMode);
@@ -345,7 +365,7 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
   const handleScreenshot = () => {
     const nv = nvRef.current;
     if (!nv) return;
-    const volName = nv.volumes[0]?.name?.replace(/\.(nii|nii\.gz)$/i, '') || 'dicom';
+    const volName = nv.volumes[0]?.name?.replace(/\.(nii|nii\.gz)$/i, '') || 'volume';
     nv.saveScene(`${volName}_screenshot.png`);
   };
 
@@ -361,10 +381,8 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Toolbar */}
       {showToolbar && (
         <div className="border-b border-border flex-shrink-0 bg-surface-secondary">
-          {/* Volume selector (only when multiple volumes and not externally controlled) */}
           {volumes.length > 1 && externalVolumeIndex == null && (
             <div className="px-4 py-1.5 flex items-center gap-1.5 border-b border-border-secondary">
               <label className="text-xs text-content-secondary">Volume:</label>
@@ -380,9 +398,7 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
             </div>
           )}
 
-          {/* View modes, windowing, actions */}
           <div className="px-4 py-1.5 flex items-center gap-3">
-            {/* View mode tabs — hidden when externally controlled */}
             {externalViewMode == null && (
               <div className="flex items-center gap-0.5 bg-surface-primary rounded-md p-0.5 border border-border-secondary">
                 {VIEW_MODES.map(({ key, label }) => (
@@ -403,7 +419,6 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
 
             <div className="w-px h-5 bg-border-secondary" />
 
-            {/* Windowing */}
             <div className="flex items-center gap-1.5">
               <label className="text-xs text-content-secondary whitespace-nowrap">Window:</label>
               <input
@@ -413,7 +428,6 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
                 className="w-20 text-xs border border-border-secondary rounded px-1.5 py-1 bg-surface-primary text-content-primary text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 step="any"
               />
-              {/* Dual-range slider */}
               <div className="relative w-28 h-5 flex items-center">
                 <div className="absolute w-full h-1 bg-border-secondary rounded pointer-events-none" style={{ zIndex: 1 }} />
                 <div
@@ -458,13 +472,12 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
                 className="p-1 text-content-tertiary hover:text-content-primary rounded transition-colors"
                 title="Reset window to auto"
               >
-                <RotateCcw className="h-3.5 w-3.5" />
+                <ResetIcon />
               </button>
             </div>
 
             <div className="w-px h-5 bg-border-secondary" />
 
-            {/* Right-side actions */}
             <div className="flex items-center gap-1 ml-auto">
               <label className="flex items-center gap-1 text-xs text-content-secondary cursor-pointer select-none mr-1">
                 <input
@@ -481,7 +494,7 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
                 className="p-1.5 text-content-tertiary hover:text-content-primary hover:bg-surface-primary rounded transition-colors"
                 title="Save screenshot as PNG"
               >
-                <Camera className="h-4 w-4" />
+                <CameraIcon />
               </button>
 
               <button
@@ -489,20 +502,18 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
                 className="p-1.5 text-content-tertiary hover:text-content-primary hover:bg-surface-primary rounded transition-colors"
                 title="Download as NIfTI"
               >
-                <Download className="h-4 w-4" />
+                <DownloadIcon />
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Canvas area */}
       <div
         ref={containerRef}
         className="flex-1 min-h-0 relative"
         style={{ height: height, background: '#000' }}
       >
-        {/* Filename overlay */}
         {showToolbar && (
           <div className="absolute top-1.5 left-2 z-10 px-1.5 py-0.5 rounded bg-black/50 pointer-events-none">
             <span className="text-[10px] text-gray-300 font-mono">
@@ -512,16 +523,16 @@ const NiivueViewer: React.FC<NiivueViewerProps> = ({
         )}
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center z-10">
-            <div className="text-center">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3 text-brand-500" />
+            <div className="text-center text-brand-500">
+              <SpinnerIcon />
               <p className="text-white text-sm">{loadingMessage}</p>
             </div>
           </div>
         )}
         {error && (
           <div className="absolute inset-0 flex items-center justify-center z-10">
-            <div className="text-center max-w-md px-4">
-              <AlertTriangle className="h-8 w-8 mx-auto mb-3 text-amber-400" />
+            <div className="text-center max-w-md px-4 text-amber-400">
+              <WarningIcon />
               <p className="text-white text-sm">{error}</p>
             </div>
           </div>

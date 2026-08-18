@@ -23,6 +23,7 @@
     "./ui": "./src/ui/index.js",
     "./file-io": "./src/file-io/index.js",
     "./viewer": "./src/viewer/index.js",
+    "./viewer/react": "./src/viewer/NiivueViewer.tsx",
     "./inference": "./src/inference/index.js",
     "./pipeline": "./src/pipeline/index.js",
     "./volume": "./src/volume/index.js",
@@ -44,6 +45,16 @@
     "test:unit": "node --test test/*.test.js",
     "test:showcase:browser": "node scripts/test-showcase-browser.mjs",
     "check": "node scripts/check-syntax.mjs"
+  },
+  "peerDependencies": {
+    "@niivue/niivue": ">=0.62.0",
+    "@niivue/dcm2niix": ">=1.0.0",
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@niivue/niivue": { "optional": true },
+    "@niivue/dcm2niix": { "optional": true },
+    "react": { "optional": true }
   },
   "engines": {
     "node": ">=22"

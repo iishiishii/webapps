@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { X, Plus, Trash2, Download, Edit2, Brain, ImageIcon, Check, Columns2 } from 'lucide-react';
 import { SchemaImage } from '../../types';
 import { isVolumeUrl, isFlatImageUrl } from '../../utils/imageHelpers';
-import NiivueViewer, { VolumeInfo, ViewMode, VIEW_MODES } from '../viewer/NiivueViewer';
+import NiivueViewer, { VolumeInfo, ViewMode, VIEW_MODES } from '@neurodesk/webapp-components/viewer/react';
 import VolumeThumbnail from '../common/VolumeThumbnail';
 import { Niivue } from '@niivue/niivue';
 import { Dcm2niix } from '@niivue/dcm2niix';
