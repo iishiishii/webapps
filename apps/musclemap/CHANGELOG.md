@@ -1,5 +1,16 @@
 # musclemap
 
+## 1.2.44
+
+### Patch Changes
+
+- Prepare the official whole-body MuscleMap v1.4 model as a gated release. Canonical upstream model contracts now generate all runtime and registry metadata.
+- Preserve official sparse anatomical labels in downloaded NIfTI files and require explicit label-space attribution for imported segmentations.
+- Verify remote model bytes by SHA-256 and replace the large-slice centered fallback with bounded full-coverage accumulation.
+- Add reproducible conversion, MR/CT fidelity validation, atomic publication, anonymous verification, activation, and rollback-friendly v1.3 retirement tooling.
+- Match v1.4 upstream inference with affine-aware MONAI geometry, source-axis preprocessing chunks, logit-space inverse transforms, Gaussian scan intervals, and 6-connected component cleanup; gate release on a full browser-to-upstream volume comparison.
+- Analyze uploaded segmentation NIfTI files without model inference, auto-detect browser, official, and OpenRecon int12 label encodings, and provide normalized official-label downloads.
+
 ## 1.2.43
 
 ### Patch Changes

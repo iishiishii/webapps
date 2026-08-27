@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "vhp-neck",
+      "input": "vhp-m-nifti/NECK_6.nii.gz",
+      "inputSha256": "2a389c80983eb49dbcc52246700a37a49827e325ef73701746e966a9054f7e86",
+      "reference": "vhp-m-output/NECK_6_dseg.nii.gz",
+      "referenceSha256": "e99f964ca718e8404410c8da035f903d584e36a62f480e17c2fca53713918e29",
+      "overlap": 0.5,
+      "sourceChunkSize": 43
+    },
+    {
+      "id": "vhp-chest",
+      "input": "vhp-m-nifti/T1_CORONAL_CHEST_9.nii.gz",
+      "inputSha256": "3111ba4973cf5d0ffb301d2c5ed8b407e2ce439f36912c8a8cfb231be31e437f",
+      "reference": "vhp-m-output/T1_CORONAL_CHEST_9_dseg.nii.gz",
+      "referenceSha256": "668f7bb72bbaf1d8f4cf50d7ff7be21f9ee96483cd19b44a6304edb2cfe4bd28",
+      "overlap": 0.5,
+      "sourceChunkSize": 34
+    },
+    {
+      "id": "vhp-pelvis",
+      "input": "vhp-m-nifti/T1_CORONAL_PELVIS_13.nii.gz",
+      "inputSha256": "d0d3f5a09f363ab4bc96e0465139afd97f059a424f27fe02a86094f2b0bbbf96",
+      "reference": "vhp-m-output-retry/T1_CORONAL_PELVIS_13_dseg.nii.gz",
+      "referenceSha256": "37b6a89586a14bde8fa7ec53175a5b85024319037024dbd0449060ee47b27c77",
+      "overlap": 0,
+      "sourceChunkSize": 5
+    },
+    {
+      "id": "vhp-knee",
+      "input": "vhp-m-nifti/T1_CORONAL_KNEE_18.nii.gz",
+      "inputSha256": "bb4cdef01379236c08f9e6c741f38a0aa435b09ef497ea3268560b868f94b4c2",
+      "reference": "vhp-m-output-retry/T1_CORONAL_KNEE_18_dseg.nii.gz",
+      "referenceSha256": "206e7bf07bea9ac544a8c79b2319e8c7dee24ecc3c4390a30819ee41d2933756",
+      "overlap": 0,
+      "sourceChunkSize": 5
+    },
+    {
+      "id": "vhp-ankle",
+      "input": "vhp-m-nifti/T1_CORONAL_ANKLE_21.nii.gz",
+      "inputSha256": "4ec78115eeeab8ce26c3a30f1e19d583ffda612a2ec06dc53bd0102b3f648c80",
+      "reference": "vhp-m-output-retry/T1_CORONAL_ANKLE_21_dseg.nii.gz",
+      "referenceSha256": "c5adb766824d2ccbc130863dafaffd41d09a76f336df8812aa76a79bb8f374c6",
+      "overlap": 0,
+      "sourceChunkSize": 5
+    }
+  ]
+}

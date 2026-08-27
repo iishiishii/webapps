@@ -124,7 +124,8 @@ export class InferenceExecutor {
     const file = new File([blob], `${data.stage}.nii`, { type: 'application/octet-stream' });
     this.results[data.stage] = {
       file: file,
-      description: data.description
+      description: data.description,
+      provenance: data.provenance || null
     };
 
     this.onStageData(data);

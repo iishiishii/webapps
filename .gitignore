@@ -28,6 +28,8 @@ Thumbs.db
 
 # Temporary model weights
 .tmp_weights/
+apps/musclemap/.tmp_model_env/
+apps/musclemap/.tmp_model_release/
 
 # Python
 __pycache__/

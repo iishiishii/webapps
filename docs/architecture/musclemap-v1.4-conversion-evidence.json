@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "apps/musclemap/scripts/convert_model.py",
+  "reproductionCommand": "corepack pnpm --filter musclemap model:convert",
+  "source": {
+    "record": "21929873",
+    "checkpointBytes": 104884148,
+    "checkpointSha256": "45dfa2843d2e0b1fd842152d6a79bfd4bcb90899c076ceb6346c59da9a79a16c",
+    "upstreamRevision": "6e1e1eb6732337c13cab53bd5cc800c69024774f"
+  },
+  "environment": {
+    "python": "3.11.16",
+    "torch": "2.4.1+cpu",
+    "monai": "1.3.2",
+    "numpy": "1.26.4",
+    "onnx": "1.17.0",
+    "onnxruntime": "1.19.2"
+  },
+  "candidates": [
+    {
+      "precision": "fp32",
+      "bytes": 104946960,
+      "sha256": "6380bd2487eeb47bdc59d63eef69fb0241bd11976712677ccee329f83552a1e6",
+      "seededPatchArgmaxAgreement": [1, 1, 1],
+      "maximumAbsoluteError": 0.000278472900390625,
+      "maximumMeanAbsoluteError": 0.000014094955076870974
+    },
+    {
+      "precision": "q8",
+      "bytes": 39601599,
+      "sha256": "508175c4b2e79510770ad4cb9bbc5cb0a24ea6116d0e9cc3ecbd9c5dfc21e2b6",
+      "seededPatchArgmaxAgreement": [1, 1, 1]
+    }
+  ],
+  "browserSmoke": {
+    "command": "corepack pnpm --filter musclemap model:validate-browser -- --precision q8",
+    "provider": "wasm",
+    "sessionCreationMs": 720.95,
+    "seededPatchArgmaxAgreement": [1, 1, 1],
+    "webGpuAvailable": false,
+    "status": "passed"
+  },
+  "limitations": [
+    "The deterministic random patches exercise conversion numerics and browser session execution but predict background only.",
+    "Approved whole-volume MR and CT fidelity remains required before publication.",
+    "WebGPU was unavailable in the recorded headless Chromium environment."
+  ]
+}
