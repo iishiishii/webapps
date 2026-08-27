@@ -49,6 +49,13 @@ async function rewriteFile(file, runtimeRoot) {
   let source = await readFile(file, 'utf8');
   const original = source;
 
+  source = source.replace(
+    /(ort\.env\.wasm\.wasmPaths\s*=\s*)(['"])(?:\.\.?\/)*wasm\/\2/g,
+    (_match, assignment) => {
+      const path = `${moduleReference(file, ortDir)}/`;
+      return `${assignment}new URL(${JSON.stringify(path)}, self.location.href).href`;
+    },
+  );
   source = source.replace(/(['"])(?:\.\.?\/)*wasm\/(ort[^'"]+)\1/g, (_match, quote, name) =>
     `${quote}${moduleReference(file, join(ortDir, name))}${quote}`);
   source = source.replace(/(['"])(?:\.\.?\/)*wasm\/\1/g, (_match, quote) =>
