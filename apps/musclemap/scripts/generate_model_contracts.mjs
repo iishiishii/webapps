@@ -70,6 +70,7 @@ function validateRelease(release, packageJson) {
       assertHex(model.asset.revision, 40, `${model.id}.asset.revision`);
       assertHex(model.asset.sha256, 64, `${model.id}.asset.sha256`);
       if (!Number.isInteger(model.asset.bytes) || model.asset.bytes <= 0) fail(`${model.id}.asset.bytes must be positive`);
+      if (model.asset.url && !model.asset.url.startsWith('https://')) fail(`${model.id}.asset.url must use HTTPS`);
       if (!model.asset.validationReport) fail(`${model.id}.asset.validationReport is required`);
     }
   }
@@ -116,7 +117,8 @@ async function loadModel(releaseModel, release) {
   const modelVersion = Number(config.model.version) === 0 ? '0.0' : String(config.model.version);
   const asset = releaseModel.asset ? {
     revision: releaseModel.asset.revision,
-    url: `https://huggingface.co/datasets/${release.publication.repository}/resolve/${releaseModel.asset.revision}/musclemap/${releaseModel.filename}`,
+    url: releaseModel.asset.url ||
+      `https://huggingface.co/datasets/${release.publication.repository}/resolve/${releaseModel.asset.revision}/musclemap/${releaseModel.filename}`,
     bytes: releaseModel.asset.bytes,
     sha256: releaseModel.asset.sha256,
     precision: releaseModel.asset.precision,

@@ -40,9 +40,26 @@
     "webGpuAvailable": false,
     "status": "passed"
   },
+  "selectedCandidate": {
+    "precision": "fp32",
+    "bytes": 104946960,
+    "sha256": "6380bd2487eeb47bdc59d63eef69fb0241bd11976712677ccee329f83552a1e6"
+  },
+  "browserWholeVolumeParity": {
+    "referenceCase": "vhp-neck",
+    "backend": "wasm",
+    "overlap": 0.5,
+    "sourceChunkSize": 43,
+    "shapeMatches": true,
+    "affineMatchesExactly": true,
+    "overallAgreement": 0.9999706934368799,
+    "foregroundDice": 0.9995944219498841,
+    "minimumPresentLabelDice": 0.9897417757339936,
+    "status": "passed"
+  },
   "limitations": [
     "The deterministic random patches exercise conversion numerics and browser session execution but predict background only.",
-    "Approved whole-volume MR and CT fidelity remains required before publication.",
+    "The full browser-to-upstream parity run covers the controlled neck station. The other stations were not rerun for this release.",
     "WebGPU was unavailable in the recorded headless Chromium environment."
   ]
 }

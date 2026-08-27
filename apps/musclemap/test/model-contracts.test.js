@@ -20,6 +20,7 @@ test('generated contracts are current', () => {
 test('catalog application version matches package.json', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(APP_VERSION, packageJson.version);
+  assert.equal(APP_VERSION, '1.4.1');
 });
 
 test('upstream reference cases pin source chunk semantics and artifact digests', async () => {
@@ -47,12 +48,13 @@ test('upstream reference cases pin source chunk semantics and artifact digests',
 test('v1.4 whole-body contract matches the official network and labels', () => {
   const model = MODEL_RELEASES.find(candidate => candidate.id === 'wholebody' && candidate.modelVersion === '1.4');
   assert.ok(model);
-  assert.equal(model.status, 'staged');
+  assert.equal(model.status, 'active');
   assert.equal(model.numClasses, 114);
   assert.equal(model.network.numResUnits, 2);
   assert.deepEqual(model.roiSize, [256, 256]);
   assert.equal(model.preprocessing.overlapDefault, 0.9);
-  assert.equal(model.asset, null);
+  assert.equal(model.asset.precision, 'fp32');
+  assert.match(model.asset.url, /musclemap-v1\.4\.1\/musclemap-wholebody-v1\.4-fp32\.onnx$/);
 
   const labelSpace = getLabelSpace('musclemap-wholebody-v1.4');
   assert.equal(labelSpace.labels.length, 114);
@@ -91,10 +93,10 @@ test('v1.4 whole-body contract matches the official network and labels', () => {
   );
 });
 
-test('only published models are selectable', () => {
+test('the published v1.4 model is selectable', () => {
   assert.equal(MODELS.length, 6);
   assert.deepEqual(MODELS.map(model => model.id), ['wholebody', 'abdomen', 'forearm', 'leg', 'pelvis', 'thigh']);
-  assert.equal(MODELS.find(model => model.id === 'wholebody').modelVersion, '1.3');
-  assert.equal(MODELS.find(model => model.id === 'wholebody').preprocessing.overlapDefault, 0.5);
+  assert.equal(MODELS.find(model => model.id === 'wholebody').modelVersion, '1.4');
+  assert.equal(MODELS.find(model => model.id === 'wholebody').preprocessing.overlapDefault, 0.9);
   assert.ok(MODELS.filter(model => model.id !== 'wholebody').every(model => model.legacy));
 });

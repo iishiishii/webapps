@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "appVersion": "1.2.44",
-  "targetAppVersion": "1.4.0",
+  "appVersion": "1.4.1",
+  "targetAppVersion": "1.4.1",
   "upstream": {
     "repository": "https://github.com/MuscleMap/MuscleMap",
     "revision": "6e1e1eb6732337c13cab53bd5cc800c69024774f",
@@ -15,7 +15,7 @@
   "models": [
     {
       "id": "wholebody",
-      "status": "active",
+      "status": "retired",
       "legacy": false,
       "displayName": "Whole Body",
       "overlapDefault": 0.5,
@@ -48,7 +48,7 @@
     },
     {
       "id": "wholebody",
-      "status": "staged",
+      "status": "active",
       "legacy": false,
       "displayName": "Whole Body",
       "overlapDefault": 0.9,
@@ -71,7 +71,14 @@
         "checkpointMd5": "910b722aeb641c380404c99ec6d1af97",
         "checkpointSha256": "45dfa2843d2e0b1fd842152d6a79bfd4bcb90899c076ceb6346c59da9a79a16c"
       },
-      "asset": null
+      "asset": {
+        "revision": "6380bd2487eeb47bdc59d63eef69fb0241bd1197",
+        "url": "https://github.com/neurodesk/webapps/releases/download/musclemap-v1.4.1/musclemap-wholebody-v1.4-fp32.onnx",
+        "bytes": 104946960,
+        "sha256": "6380bd2487eeb47bdc59d63eef69fb0241bd11976712677ccee329f83552a1e6",
+        "precision": "fp32",
+        "validationReport": "https://github.com/neurodesk/webapps/releases/download/musclemap-v1.4.1/musclemap-v1.4-conversion-evidence.json"
+      }
     },
     {
       "id": "abdomen",

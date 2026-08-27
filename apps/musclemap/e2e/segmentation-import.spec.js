@@ -38,7 +38,7 @@ test('runs metrics only and restores OpenRecon labels from an uploaded NIfTI', a
   });
 
   const contract = page.locator('.file-entry-controls select').nth(1);
-  await expect(contract).toHaveValue('musclemap-wholebody-v1.3|auto');
+  await expect(contract).toHaveValue('musclemap-wholebody-v1.4|auto');
   await expect(page.locator('#runSegmentation')).toBeDisabled();
   await expect(page.locator('#calculateMetrics')).toBeEnabled();
 
@@ -48,7 +48,7 @@ test('runs metrics only and restores OpenRecon labels from an uploaded NIfTI', a
   await expect(page.locator('#metricsSummary')).toContainText('2');
   await expect(page.locator('#metricsSummary')).toContainText('2.0');
   await expect(page.locator('#consoleOutput')).toContainText(
-    'Detected OpenRecon int12 labels for musclemap-wholebody-v1.3; restored official MuscleMap label mapping.'
+    'Detected OpenRecon int12 labels for musclemap-wholebody-v1.4; restored official MuscleMap label mapping.'
   );
   await expect.poll(() => page.evaluate(() => window.app.uploadedNormalizedFiles.size)).toBe(1);
 

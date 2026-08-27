@@ -16,23 +16,23 @@ export const musclemapPlugin = definePlugin({
   "tasks": [
     {
       "id": "wholebody",
-      "label": "Whole Body (v1.3)",
+      "label": "Whole Body (v1.4)",
       "modelAssets": [
         {
           "id": "musclemap-wholebody",
           "filename": "musclemap-wholebody.onnx",
-          "numClasses": 100,
+          "numClasses": 114,
           "roiSize": [
             256,
             256
           ],
-          "modelVersion": "1.3",
-          "labelSpaceId": "musclemap-wholebody-v1.3",
+          "modelVersion": "1.4",
+          "labelSpaceId": "musclemap-wholebody-v1.4",
           "legacy": false,
-          "revision": "a8cdbf8c2874e1a2f617ecc6695244a0810eac11",
-          "url": "https://huggingface.co/datasets/sbollmann/neurodesk-webapps-assets/resolve/a8cdbf8c2874e1a2f617ecc6695244a0810eac11/musclemap/musclemap-wholebody.onnx",
-          "bytes": 26888722,
-          "sha256": "3bff6e22e54d3d7399247d5e71d6423c91bb636d86ab21e0dd929524afbc2bc7"
+          "revision": "6380bd2487eeb47bdc59d63eef69fb0241bd1197",
+          "url": "https://github.com/neurodesk/webapps/releases/download/musclemap-v1.4.1/musclemap-wholebody-v1.4-fp32.onnx",
+          "bytes": 104946960,
+          "sha256": "6380bd2487eeb47bdc59d63eef69fb0241bd11976712677ccee329f83552a1e6"
         }
       ]
     },

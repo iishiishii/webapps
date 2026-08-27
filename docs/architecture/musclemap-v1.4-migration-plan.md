@@ -13,7 +13,7 @@ There is no MuscleMap Git tag or GitHub release named `1.4`. The exact target is
 - Model checkpoint and JSON: Zenodo record [21929873](https://zenodo.org/records/21929873), version 1.4, DOI `10.5281/zenodo.21929873`.
 - Upstream inference behavior and documentation: MuscleMap commit [`6e1e1eb6732337c13cab53bd5cc800c69024774f`](https://github.com/MuscleMap/MuscleMap/commit/6e1e1eb6732337c13cab53bd5cc800c69024774f), which merged [PR 88](https://github.com/MuscleMap/MuscleMap/pull/88).
 
-The upstream repository calls its application release `2.0`. This webapp should not claim to be a port of the upstream desktop application. It should expose app version `1.4.0` and model version `1.4` as separate values.
+The upstream repository calls its application release `2.0`. This webapp should not claim to be a port of the upstream desktop application. It should expose app version `1.4.1` and model version `1.4` as separate values.
 
 Do not switch the deployed app to the new asset until the converted model, browser pipeline, label encoding, and representative MR and CT outputs pass the release gates in this document.
 
@@ -254,7 +254,7 @@ Gate: MR and CT browser outputs pass Unit 3 thresholds; sparse export/import rou
 
 Deliverables:
 
-- Set the webapp package version to `1.4.0` and generate runtime and cache-busting versions from that one source.
+- Set the webapp package version to `1.4.1` and generate runtime and cache-busting versions from that one source.
 - Display app version and scientific model version separately.
 - Describe whole-body v1.4 as 113 structures from anatomical MRI or CT.
 - Keep IMF controls explicitly modality-specific.
@@ -287,7 +287,7 @@ Deliverables:
 - Confirm that no checkpoint, ONNX asset, validation fixture without redistribution approval, or credential is bundled in the web artifact or Git history.
 - Before release, record the prior app commit, composite deployment artifact, standalone release tag or archive, Hugging Face revision, and expected cache key.
 - Test rollback through the same production deployment topology used for the release, including the composite site and any enabled Cloudflare deployment. A preview-only rollback is insufficient.
-- Tag the completed app release as `musclemap-v1.4.0` under the repository's normal release convention.
+- Tag the completed app release as `musclemap-v1.4.1` under the repository's normal release convention.
 
 Gate: all definition-of-done checks pass on the deployed release candidate and the production-path rollback drill restores v1.3 behavior without cache contamination.
 

@@ -1,5 +1,5 @@
-export const APP_VERSION = "1.2.44";
-export const TARGET_APP_VERSION = "1.4.0";
+export const APP_VERSION = "1.4.1";
+export const TARGET_APP_VERSION = "1.4.1";
 export const MODEL_BASE_URL = "https://huggingface.co/datasets/sbollmann/neurodesk-webapps-assets/resolve/a8cdbf8c2874e1a2f617ecc6695244a0810eac11/musclemap";
 export const UPSTREAM_REVISION = "6e1e1eb6732337c13cab53bd5cc800c69024774f";
 export const MODEL_RELEASES = [
@@ -10,7 +10,7 @@ export const MODEL_RELEASES = [
     "label": "Whole Body",
     "modelVersion": "1.3",
     "labelSpaceId": "musclemap-wholebody-v1.3",
-    "status": "active",
+    "status": "retired",
     "legacy": false,
     "numClasses": 100,
     "roiSize": [
@@ -988,7 +988,7 @@ export const MODEL_RELEASES = [
     "label": "Whole Body",
     "modelVersion": "1.4",
     "labelSpaceId": "musclemap-wholebody-v1.4",
-    "status": "staged",
+    "status": "active",
     "legacy": false,
     "numClasses": 114,
     "roiSize": [
@@ -1036,7 +1036,14 @@ export const MODEL_RELEASES = [
       "upstreamRevision": "6e1e1eb6732337c13cab53bd5cc800c69024774f",
       "license": "MIT"
     },
-    "asset": null,
+    "asset": {
+      "revision": "6380bd2487eeb47bdc59d63eef69fb0241bd1197",
+      "url": "https://github.com/neurodesk/webapps/releases/download/musclemap-v1.4.1/musclemap-wholebody-v1.4-fp32.onnx",
+      "bytes": 104946960,
+      "sha256": "6380bd2487eeb47bdc59d63eef69fb0241bd11976712677ccee329f83552a1e6",
+      "precision": "fp32",
+      "validationReport": "https://github.com/neurodesk/webapps/releases/download/musclemap-v1.4.1/musclemap-v1.4-conversion-evidence.json"
+    },
     "labelSpace": {
       "id": "musclemap-wholebody-v1.4",
       "modelVersion": "1.4",

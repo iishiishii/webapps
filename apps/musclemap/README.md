@@ -88,7 +88,7 @@ HF_TOKEN=... corepack pnpm --filter musclemap model:publish
 corepack pnpm --filter musclemap model:activate
 ```
 
-Publication makes one Hugging Face commit containing the ONNX model and its provenance report, then verifies an anonymous download at the returned immutable revision. Activation refuses to run without matching conversion, fidelity, and publication receipts. It retires v1.3, activates v1.4, changes the app version to 1.4.0, and regenerates every model consumer.
+The v1.4 FP32 model and its provenance report are release assets for MuscleMap 1.4.1. The runtime verifies the model byte length and SHA-256 before inference. The publication scripts remain available for future Hugging Face releases that have matching conversion, fidelity, browser, upstream, and publication receipts.
 
 Never commit fixture data, checkpoints, staged ONNX files, reports that contain private paths, or access tokens.
 
