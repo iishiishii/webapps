@@ -1,5 +1,11 @@
 # musclemap
 
+## 1.2.43
+
+### Patch Changes
+
+- 90762b0: Fix ONNX Runtime WASM URLs in composite-site builds so inference loads the shared runtime without duplicating the `/_runtime/` path.
+
 ## 1.2.42
 
 ### Patch Changes

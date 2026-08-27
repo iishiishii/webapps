@@ -1,5 +1,11 @@
 # spinalcordtoolbox
 
+## 0.1.6
+
+### Patch Changes
+
+- 90762b0: Fix ONNX Runtime WASM URLs in composite-site builds so inference loads the shared runtime without duplicating the `/_runtime/` path.
+
 ## 0.1.5
 
 ### Patch Changes
