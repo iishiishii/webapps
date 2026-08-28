@@ -41,7 +41,7 @@ async function copyVerifiedFamily({ family, siteDist, registry }) {
   }
 }
 
-async function rewriteFile(file, runtimeRoot) {
+async function rewriteFile(file, runtimeRoot, appScopedRuntimeFamilies = []) {
   const ortDir = join(runtimeRoot, 'ort-web', '1.21.0');
   const dcm2niix = join(runtimeRoot, 'dcm2niix', '1', 'index.js');
   const niftiReader = join(runtimeRoot, 'nifti-reader', '0.8.0', 'index.js');
@@ -49,17 +49,26 @@ async function rewriteFile(file, runtimeRoot) {
   let source = await readFile(file, 'utf8');
   const original = source;
 
-  source = source.replace(
-    /(ort\.env\.wasm\.wasmPaths\s*=\s*)(['"])(?:\.\.?\/)*wasm\/\2/g,
-    (_match, assignment) => {
-      const path = `${moduleReference(file, ortDir)}/`;
-      return `${assignment}new URL(${JSON.stringify(path)}, self.location.href).href`;
-    },
-  );
-  source = source.replace(/(['"])(?:\.\.?\/)*wasm\/(ort[^'"]+)\1/g, (_match, quote, name) =>
-    `${quote}${moduleReference(file, join(ortDir, name))}${quote}`);
-  source = source.replace(/(['"])(?:\.\.?\/)*wasm\/\1/g, (_match, quote) =>
-    `${quote}${moduleReference(file, ortDir)}/${quote}`);
+  if (appScopedRuntimeFamilies.includes('ort-web')) {
+    source = source.replace(
+      /(ort\.env\.wasm\.wasmPaths\s*=\s*)(['"])((?:\.\.?\/)*wasm\/)\2/g,
+      (_match, assignment, _quote, path) => (
+        `${assignment}new URL(${JSON.stringify(path)}, self.location.href).href`
+      ),
+    );
+  } else {
+    source = source.replace(
+      /(ort\.env\.wasm\.wasmPaths\s*=\s*)(['"])(?:\.\.?\/)*wasm\/\2/g,
+      (_match, assignment) => {
+        const path = `${moduleReference(file, ortDir)}/`;
+        return `${assignment}new URL(${JSON.stringify(path)}, self.location.href).href`;
+      },
+    );
+    source = source.replace(/(['"])(?:\.\.?\/)*wasm\/(ort[^'"]+)\1/g, (_match, quote, name) =>
+      `${quote}${moduleReference(file, join(ortDir, name))}${quote}`);
+    source = source.replace(/(['"])(?:\.\.?\/)*wasm\/\1/g, (_match, quote) =>
+      `${quote}${moduleReference(file, ortDir)}/${quote}`);
+  }
   source = source.replace(/(['"])(?:\.\.?\/)*dcm2niix\/index\.js\1/g, (_match, quote) =>
     `${quote}${moduleReference(file, dcm2niix)}${quote}`);
   source = source.replace(/(['"])(?:\.\.?\/)*nifti-js\/index\.js\1/g, (_match, quote) =>
@@ -75,6 +84,7 @@ async function removeAppCopies(siteDist, registry) {
     await rm(join(appDist, 'dcm2niix'), { recursive: true, force: true });
     await rm(join(appDist, 'nifti-js'), { recursive: true, force: true });
     await rm(join(appDist, 'vendor', 'webapp-components'), { recursive: true, force: true });
+    if (app.app_scoped_runtime_families?.includes('ort-web')) continue;
     const wasmDir = join(appDist, 'wasm');
     try {
       for (const entry of await readdir(wasmDir, { withFileTypes: true })) {
@@ -105,7 +115,11 @@ export async function assembleRuntimeAssetStore({ repoRoot, siteDist, registry }
   const files = await walk(siteDist);
   for (const file of files) {
     if (!file.startsWith(runtimeRoot) && TEXT_EXTENSIONS.has(extname(file))) {
-      await rewriteFile(file, runtimeRoot);
+      const relativePath = posix(relative(siteDist, file));
+      const app = registry.apps.find((candidate) => (
+        relativePath === candidate.path || relativePath.startsWith(`${candidate.path}/`)
+      ));
+      await rewriteFile(file, runtimeRoot, app?.app_scoped_runtime_families);
     }
   }
   await removeAppCopies(siteDist, registry);

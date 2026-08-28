@@ -101,6 +101,13 @@ export async function loadAppsRegistry(path = registryPath) {
         (!Number.isInteger(app.artifact_budget_bytes) || app.artifact_budget_bytes <= 0)) {
       errors.push(`artifact_budget_bytes must be a positive integer for ${app.id}`);
     }
+    if (app.app_scoped_runtime_families !== undefined && (
+      !Array.isArray(app.app_scoped_runtime_families)
+      || app.app_scoped_runtime_families.some((family) => !ID.test(family))
+      || new Set(app.app_scoped_runtime_families).size !== app.app_scoped_runtime_families.length
+    )) {
+      errors.push(`app_scoped_runtime_families must contain unique runtime family ids for ${app.id}`);
+    }
     if (!app.title || !app.description || !app.source || !app.license) {
       errors.push(`incomplete catalog entry: ${app.id}`);
     }
@@ -121,6 +128,7 @@ export async function loadAppsRegistry(path = registryPath) {
     apps: Object.freeze(registry.apps.map((app) => Object.freeze({
       ...app,
       keywords: Object.freeze([...app.keywords]),
+      app_scoped_runtime_families: Object.freeze([...(app.app_scoped_runtime_families ?? [])]),
     }))),
   });
 }

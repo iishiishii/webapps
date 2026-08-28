@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { chromium } from '@playwright/test';
 import { loadAppsRegistry, repoRoot } from '../scripts/lib/apps-registry.mjs';
+import { verifyMuscleMapThreads } from './multithreaded-ort-smoke.mjs';
 
 const dist = join(repoRoot, 'dist');
 const registry = await loadAppsRegistry();
@@ -289,6 +290,15 @@ try {
     if (app.id === 'seedseg') {
       const consoleText = await page.locator('#consoleOutput').innerText();
       if (!consoleText.includes('ONNX Runtime ready')) failures.push(`seedseg: worker did not initialize: ${consoleText.trim()}`);
+    }
+    if (app.id === 'musclemap') {
+      try {
+        await page.waitForFunction(() => window.crossOriginIsolated === true, null, { timeout: 30_000 });
+        const result = await verifyMuscleMapThreads(page, `${origin}/${app.path}/`);
+        console.log(`PASS ${app.id}: ORT session used ${result.threadCount} threads`);
+      } catch (error) {
+        failures.push(`${app.id}: ${error.message}`);
+      }
     }
 
     const moreApps = page.locator('[title="More Neurodesk web apps"]:visible').first();

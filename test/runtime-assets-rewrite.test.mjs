@@ -15,7 +15,7 @@ test('composite rewrite gives ONNX Runtime an absolute WASM base URL', async (t)
   const repoRoot = join(root, 'repo');
   const siteDist = join(root, 'site');
   const apps = [
-    { id: 'musclemap', path: 'musclemap' },
+    { id: 'musclemap', path: 'musclemap', app_scoped_runtime_families: ['ort-web'] },
     { id: 'vesselboost', path: 'vesselboost' },
     { id: 'spinalcordtoolbox', path: 'sct' },
     { id: 'calmar', path: 'calmar' },
@@ -67,7 +67,13 @@ test('composite rewrite gives ONNX Runtime an absolute WASM base URL', async (t)
 
   for (const app of apps) {
     const worker = await readFile(join(siteDist, app.path, 'js', 'inference-worker.js'), 'utf8');
-    assert.match(worker, /\.\.\/\.\.\/_runtime\/ort-web\/1\.21\.0\/ort/);
+    if (app.id === 'musclemap') {
+      assert.match(worker, /\.\.\/wasm\/ort/);
+      assert.doesNotMatch(worker, /_runtime\/ort-web/);
+      await readFile(join(siteDist, app.path, 'wasm', 'ort.webgpu.min.js'));
+    } else {
+      assert.match(worker, /\.\.\/\.\.\/_runtime\/ort-web\/1\.21\.0\/ort/);
+    }
 
     const assignment = worker.match(/ort\.env\.wasm\.wasmPaths\s*=\s*[^;]+;/)?.[0];
     assert.ok(assignment, `${app.id} worker is missing its wasmPaths assignment`);
@@ -75,11 +81,15 @@ test('composite rewrite gives ONNX Runtime an absolute WASM base URL', async (t)
     for (const [workerUrl, expectedRuntimeUrl] of [
       [
         `https://example.test/${app.path}/js/inference-worker.js`,
-        'https://example.test/_runtime/ort-web/1.21.0/',
+        app.id === 'musclemap'
+          ? 'https://example.test/musclemap/wasm/'
+          : 'https://example.test/_runtime/ort-web/1.21.0/',
       ],
       [
         `https://example.test/webapps/${app.path}/js/inference-worker.js`,
-        'https://example.test/webapps/_runtime/ort-web/1.21.0/',
+        app.id === 'musclemap'
+          ? 'https://example.test/webapps/musclemap/wasm/'
+          : 'https://example.test/webapps/_runtime/ort-web/1.21.0/',
       ],
     ]) {
       const context = {

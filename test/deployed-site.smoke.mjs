@@ -2,6 +2,7 @@ import { chromium } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadAppsRegistry, repoRoot } from '../scripts/lib/apps-registry.mjs';
+import { verifyMuscleMapThreads } from './multithreaded-ort-smoke.mjs';
 
 const baseURL = process.env.BASE_URL;
 if (!baseURL) throw new Error('BASE_URL is required (for example https://example.github.io/webapps/)');
@@ -24,6 +25,9 @@ try {
     const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
     if (!response?.ok()) throw new Error(`${app.id}: ${url} returned ${response?.status() ?? 'no response'}`);
     await page.waitForFunction(() => window.crossOriginIsolated === true, null, { timeout: 30000 });
+    if (app.id === 'musclemap') {
+      await verifyMuscleMapThreads(page, url);
+    }
     if (errors.length) throw new Error(`${app.id}: browser errors: ${errors.join('; ')}`);
     console.log(`PASS ${app.id}: crossOriginIsolated at ${url}`);
     await context.close();

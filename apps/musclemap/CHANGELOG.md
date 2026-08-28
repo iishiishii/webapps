@@ -1,5 +1,11 @@
 # musclemap
 
+## 1.4.3
+
+### Patch Changes
+
+- Keep ONNX Runtime inside the MuscleMap service worker scope so all available WebAssembly threads can start on GitHub Pages.
+
 ## 1.4.2
 
 ### Patch Changes
