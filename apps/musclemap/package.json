@@ -22,7 +22,7 @@
     "prebuild": "pnpm models:check && pnpm vendor && pnpm runtime-support && bash web/setup.sh",
     "build": "node ../../scripts/build-static.mjs",
     "pretest": "pnpm models:check && pnpm runtime-support",
-    "pretest:e2e": "pnpm vendor && pnpm runtime-support",
+    "pretest:e2e": "pnpm vendor && pnpm runtime-support && bash web/setup.sh",
     "test": "node --test test/*.test.js",
     "test:e2e": "playwright test",
     "test:python": "python3 -m pytest tests/ -q"
