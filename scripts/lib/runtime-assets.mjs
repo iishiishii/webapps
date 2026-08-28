@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, relative, sep } from 'node:path';
+import { isUrlWithinServiceWorkerScope } from './runtime-support.mjs';
 
 const TEXT_EXTENSIONS = new Set(['.html', '.js', '.mjs']);
 
@@ -41,7 +42,7 @@ async function copyVerifiedFamily({ family, siteDist, registry }) {
   }
 }
 
-async function rewriteFile(file, runtimeRoot, appScopedRuntimeFamilies = []) {
+async function rewriteFile(file, runtimeRoot, app, relativePath) {
   const ortDir = join(runtimeRoot, 'ort-web', '1.21.0');
   const dcm2niix = join(runtimeRoot, 'dcm2niix', '1', 'index.js');
   const niftiReader = join(runtimeRoot, 'nifti-reader', '0.8.0', 'index.js');
@@ -49,12 +50,18 @@ async function rewriteFile(file, runtimeRoot, appScopedRuntimeFamilies = []) {
   let source = await readFile(file, 'utf8');
   const original = source;
 
-  if (appScopedRuntimeFamilies.includes('ort-web')) {
+  if (app?.app_scoped_runtime_families?.includes('ort-web')) {
     source = source.replace(
       /(ort\.env\.wasm\.wasmPaths\s*=\s*)(['"])((?:\.\.?\/)*wasm\/)\2/g,
-      (_match, assignment, _quote, path) => (
-        `${assignment}new URL(${JSON.stringify(path)}, self.location.href).href`
-      ),
+      (_match, assignment, _quote, path) => {
+        const origin = 'https://composite.invalid/';
+        const serviceWorkerUrl = new URL(`${app.path}/coi-serviceworker.js`, origin);
+        const runtimeUrl = new URL(path, new URL(relativePath, origin));
+        if (!isUrlWithinServiceWorkerScope(serviceWorkerUrl, runtimeUrl)) {
+          throw new Error(`${app.id} runtime escapes its service-worker scope: ${runtimeUrl.pathname}`);
+        }
+        return `${assignment}new URL(${JSON.stringify(path)}, self.location.href).href`;
+      },
     );
   } else {
     source = source.replace(
@@ -119,7 +126,7 @@ export async function assembleRuntimeAssetStore({ repoRoot, siteDist, registry }
       const app = registry.apps.find((candidate) => (
         relativePath === candidate.path || relativePath.startsWith(`${candidate.path}/`)
       ));
-      await rewriteFile(file, runtimeRoot, app?.app_scoped_runtime_families);
+      await rewriteFile(file, runtimeRoot, app, relativePath);
     }
   }
   await removeAppCopies(siteDist, registry);

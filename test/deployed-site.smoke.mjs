@@ -2,6 +2,7 @@ import { chromium } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadAppsRegistry, repoRoot } from '../scripts/lib/apps-registry.mjs';
+import { verifyMuscleMapFullPipeline } from './musclemap-full-pipeline-smoke.mjs';
 import { verifyMuscleMapThreads } from './multithreaded-ort-smoke.mjs';
 
 const baseURL = process.env.BASE_URL;
@@ -27,6 +28,8 @@ try {
     await page.waitForFunction(() => window.crossOriginIsolated === true, null, { timeout: 30000 });
     if (app.id === 'musclemap') {
       await verifyMuscleMapThreads(page, url);
+      const pipeline = await verifyMuscleMapFullPipeline(page, url);
+      console.log(`PASS ${app.id}: full pipeline used ${pipeline.requestedThreads} threads`);
     }
     if (errors.length) throw new Error(`${app.id}: browser errors: ${errors.join('; ')}`);
     console.log(`PASS ${app.id}: crossOriginIsolated at ${url}`);

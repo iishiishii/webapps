@@ -78,6 +78,9 @@ jobs:
       - name: Install Python reference dependencies
         if: matrix.python_reference
         run: pip install -r apps/${{ matrix.app }}/requirements.txt nibabel
+      - name: Test MuscleMap worker scope
+        if: matrix.app == 'musclemap'
+        run: node --test test/runtime-worker-scope.test.mjs test/runtime-assets-rewrite.test.mjs
       - name: Test app
         env:
           APP: ${{ matrix.app }}

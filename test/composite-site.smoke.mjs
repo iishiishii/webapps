@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { chromium } from '@playwright/test';
 import { loadAppsRegistry, repoRoot } from '../scripts/lib/apps-registry.mjs';
+import { verifyMuscleMapFullPipeline } from './musclemap-full-pipeline-smoke.mjs';
 import { verifyMuscleMapThreads } from './multithreaded-ort-smoke.mjs';
 
 const dist = join(repoRoot, 'dist');
@@ -296,6 +297,11 @@ try {
         await page.waitForFunction(() => window.crossOriginIsolated === true, null, { timeout: 30_000 });
         const result = await verifyMuscleMapThreads(page, `${origin}/${app.path}/`);
         console.log(`PASS ${app.id}: ORT session used ${result.threadCount} threads`);
+        const pipeline = await verifyMuscleMapFullPipeline(page, `${origin}/${app.path}/`);
+        console.log(
+          `PASS ${app.id}: full v1.4 pipeline produced ${pipeline.segmentationBytes} bytes `
+          + `and ${pipeline.totalVolumeMl} mL of metrics`,
+        );
       } catch (error) {
         failures.push(`${app.id}: ${error.message}`);
       }
