@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "appVersion": "1.4.1",
-  "targetAppVersion": "1.4.1",
+  "appVersion": "1.4.2",
+  "targetAppVersion": "1.4.2",
   "upstream": {
     "repository": "https://github.com/MuscleMap/MuscleMap",
     "revision": "6e1e1eb6732337c13cab53bd5cc800c69024774f",
@@ -15,8 +15,8 @@
   "models": [
     {
       "id": "wholebody",
-      "status": "retired",
-      "legacy": false,
+      "status": "legacy",
+      "legacy": true,
       "displayName": "Whole Body",
       "overlapDefault": 0.5,
       "filename": "musclemap-wholebody.onnx",

@@ -102,10 +102,10 @@ class MuscleMapApp {
         const suffix = model.legacy ? ' — legacy' : '';
         modelSelect.appendChild(new Option(
           `${model.label} (${model.numClasses - 1} structures, v${model.modelVersion}${suffix})`,
-          model.name
+          model.labelSpaceId
         ));
       }
-      modelSelect.value = Config.MODELS[0].name;
+      modelSelect.value = Config.MODELS[0].labelSpaceId;
       modelSelect.addEventListener('change', () => {
         this.updateAboutModel();
         this.syncInferenceCompatibilityControls();
@@ -297,7 +297,8 @@ class MuscleMapApp {
     const labelIndex = Math.round(rawValue);
     if (labelIndex <= 0) return '';
 
-    const modelLabels = getLabelsForModel(this.currentModelName);
+    const modelLabels = getLabelsForLabelSpace(this.currentLabelSpaceId) ||
+      getLabelsForModel(this.currentModelName);
     const labelName = getLabelName(labelIndex, modelLabels);
     const labelValue = modelLabels[labelIndex]?.value ?? labelIndex;
     return `#${labelValue} ${labelName}`;
@@ -852,8 +853,8 @@ class MuscleMapApp {
 
   getSelectedModelConfig() {
     const modelSelect = document.getElementById('modelSelect');
-    const selectedModelName = modelSelect ? modelSelect.value : Config.MODELS[0].name;
-    return Config.MODELS.find(m => m.name === selectedModelName) || Config.MODELS[0];
+    const selectedLabelSpaceId = modelSelect ? modelSelect.value : Config.MODELS[0].labelSpaceId;
+    return Config.MODELS.find(model => model.labelSpaceId === selectedLabelSpaceId) || Config.MODELS[0];
   }
 
   setWorkerButtonsBusy(busy) {
@@ -941,7 +942,8 @@ class MuscleMapApp {
     this.currentModelName = modelConfig.name;
     this.currentLabelSpaceId = modelConfig.labelSpaceId;
 
-    const modelLabels = getLabelsForModel(modelConfig.name);
+    const modelLabels = getLabelsForLabelSpace(modelConfig.labelSpaceId) ||
+      getLabelsForModel(modelConfig.name);
     const colormapData = generateNiivueColormap(modelLabels);
     if (this.isViewerAvailable()) {
       this.viewerController.registerMuscleColormap(colormapData);

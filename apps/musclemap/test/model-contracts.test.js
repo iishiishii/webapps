@@ -20,7 +20,7 @@ test('generated contracts are current', () => {
 test('catalog application version matches package.json', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(APP_VERSION, packageJson.version);
-  assert.equal(APP_VERSION, '1.4.1');
+  assert.equal(APP_VERSION, '1.4.2');
 });
 
 test('upstream reference cases pin source chunk semantics and artifact digests', async () => {
@@ -95,10 +95,20 @@ test('v1.4 whole-body contract matches the official network and labels', () => {
   );
 });
 
-test('the published v1.4 model is selectable', () => {
-  assert.equal(MODELS.length, 6);
-  assert.deepEqual(MODELS.map(model => model.id), ['wholebody', 'abdomen', 'forearm', 'leg', 'pelvis', 'thigh']);
-  assert.equal(MODELS.find(model => model.id === 'wholebody').modelVersion, '1.4');
-  assert.equal(MODELS.find(model => model.id === 'wholebody').preprocessing.overlapDefault, 0.9);
-  assert.ok(MODELS.filter(model => model.id !== 'wholebody').every(model => model.legacy));
+test('v1.4 is the default whole-body model and v1.3 remains selectable as legacy', () => {
+  assert.equal(MODELS.length, 7);
+  assert.equal(MODELS[0].modelVersion, '1.4');
+
+  const wholeBodyModels = MODELS.filter(model => model.id === 'wholebody');
+  assert.deepEqual(
+    wholeBodyModels.map(model => [model.modelVersion, model.status, model.legacy]),
+    [
+      ['1.4', 'active', false],
+      ['1.3', 'legacy', true]
+    ]
+  );
+  assert.equal(wholeBodyModels[0].preprocessing.overlapDefault, 0.9);
+  assert.equal(wholeBodyModels[1].preprocessing.overlapDefault, 0.5);
+  assert.notEqual(wholeBodyModels[0].labelSpaceId, wholeBodyModels[1].labelSpaceId);
+  assert.ok(MODELS.filter(model => model.status !== 'active').every(model => model.legacy));
 });

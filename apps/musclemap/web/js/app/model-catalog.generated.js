@@ -1,5 +1,5 @@
-export const APP_VERSION = "1.4.1";
-export const TARGET_APP_VERSION = "1.4.1";
+export const APP_VERSION = "1.4.2";
+export const TARGET_APP_VERSION = "1.4.2";
 export const MODEL_BASE_URL = "https://huggingface.co/datasets/sbollmann/neurodesk-webapps-assets/resolve/a8cdbf8c2874e1a2f617ecc6695244a0810eac11/musclemap";
 export const UPSTREAM_REVISION = "6e1e1eb6732337c13cab53bd5cc800c69024774f";
 export const MODEL_RELEASES = [
@@ -10,8 +10,8 @@ export const MODEL_RELEASES = [
     "label": "Whole Body",
     "modelVersion": "1.3",
     "labelSpaceId": "musclemap-wholebody-v1.3",
-    "status": "retired",
-    "legacy": false,
+    "status": "legacy",
+    "legacy": true,
     "numClasses": 100,
     "roiSize": [
       256,
@@ -3167,13 +3167,17 @@ export const MODEL_RELEASES = [
   }
 ];
 
-export const MODELS = MODEL_RELEASES.filter(model => model.status === 'active' || model.status === 'legacy');
+export const MODELS = MODEL_RELEASES
+  .filter(model => model.status === 'active' || model.status === 'legacy')
+  .sort((left, right) => Number(right.status === 'active') - Number(left.status === 'active'));
 export const LABEL_SPACES = Object.fromEntries(MODEL_RELEASES.map(model => [model.labelSpaceId, model.labelSpace]));
-export const MODELS_BY_ID = Object.fromEntries(MODELS.map(model => [model.id, model]));
-export const MODELS_BY_FILENAME = Object.fromEntries(MODELS.map(model => [model.filename, model]));
+export const MODELS_BY_LABEL_SPACE = Object.fromEntries(MODELS.map(model => [model.labelSpaceId, model]));
+export const MODELS_BY_ID = Object.fromEntries([...MODELS].reverse().map(model => [model.id, model]));
+export const MODELS_BY_FILENAME = Object.fromEntries([...MODELS].reverse().map(model => [model.filename, model]));
 
 export function getModelById(id) { return MODELS_BY_ID[id] || null; }
 export function getModelByFilename(filename) { return MODELS_BY_FILENAME[filename] || null; }
+export function getModelByLabelSpace(id) { return MODELS_BY_LABEL_SPACE[id] || null; }
 export function getLabelSpace(id) { return LABEL_SPACES[id] || null; }
 export function requireLabelSpace(id) {
   const labelSpace = getLabelSpace(id);

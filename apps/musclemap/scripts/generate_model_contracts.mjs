@@ -53,11 +53,18 @@ function validateRelease(release, packageJson) {
   if (!Array.isArray(release.models) || release.models.length === 0) fail('models must not be empty');
 
   const activeIds = new Set();
+  const selectableLabelSpaces = new Set();
   for (const model of release.models) {
     if (!['active', 'staged', 'legacy', 'retired'].includes(model.status)) fail(`${model.id} has an invalid status`);
-    if (model.status === 'active' || model.status === 'legacy') {
-      if (activeIds.has(model.id)) fail(`more than one selectable version exists for ${model.id}`);
+    if (model.status === 'active') {
+      if (activeIds.has(model.id)) fail(`more than one active version exists for ${model.id}`);
       activeIds.add(model.id);
+    }
+    if (model.status === 'active' || model.status === 'legacy') {
+      if (selectableLabelSpaces.has(model.labelSpaceId)) {
+        fail(`more than one selectable model uses ${model.labelSpaceId}`);
+      }
+      selectableLabelSpaces.add(model.labelSpaceId);
     }
     assertHex(model.config?.sha256, 64, `${model.id}.config.sha256`);
     if (typeof model.overlapDefault !== 'number' || model.overlapDefault < 0 || model.overlapDefault >= 1) {
@@ -197,12 +204,16 @@ function renderCatalog(release, models) {
     `export const MODEL_BASE_URL = ${JSON.stringify(release.publication.baseUrl)};\n` +
     `export const UPSTREAM_REVISION = ${JSON.stringify(release.upstream.revision)};\n` +
     `export const MODEL_RELEASES = ${JSON.stringify(models, null, 2)};\n\n` +
-    `export const MODELS = MODEL_RELEASES.filter(model => model.status === 'active' || model.status === 'legacy');\n` +
+    `export const MODELS = MODEL_RELEASES\n` +
+    `  .filter(model => model.status === 'active' || model.status === 'legacy')\n` +
+    `  .sort((left, right) => Number(right.status === 'active') - Number(left.status === 'active'));\n` +
     `export const LABEL_SPACES = Object.fromEntries(MODEL_RELEASES.map(model => [model.labelSpaceId, model.labelSpace]));\n` +
-    `export const MODELS_BY_ID = Object.fromEntries(MODELS.map(model => [model.id, model]));\n` +
-    `export const MODELS_BY_FILENAME = Object.fromEntries(MODELS.map(model => [model.filename, model]));\n\n` +
+    `export const MODELS_BY_LABEL_SPACE = Object.fromEntries(MODELS.map(model => [model.labelSpaceId, model]));\n` +
+    `export const MODELS_BY_ID = Object.fromEntries([...MODELS].reverse().map(model => [model.id, model]));\n` +
+    `export const MODELS_BY_FILENAME = Object.fromEntries([...MODELS].reverse().map(model => [model.filename, model]));\n\n` +
     `export function getModelById(id) { return MODELS_BY_ID[id] || null; }\n` +
     `export function getModelByFilename(filename) { return MODELS_BY_FILENAME[filename] || null; }\n` +
+    `export function getModelByLabelSpace(id) { return MODELS_BY_LABEL_SPACE[id] || null; }\n` +
     `export function getLabelSpace(id) { return LABEL_SPACES[id] || null; }\n` +
     `export function requireLabelSpace(id) {\n` +
     `  const labelSpace = getLabelSpace(id);\n` +
@@ -211,11 +222,18 @@ function renderCatalog(release, models) {
     `}\n`;
 }
 
+function registryId(model, models) {
+  const conflictsWithActive = model.status !== 'active' && models.some(candidate => (
+    candidate.id === model.id && candidate.status === 'active'
+  ));
+  return conflictsWithActive ? `${model.id}-v${model.modelVersion}` : model.id;
+}
+
 function renderManifest(release, models) {
   const assets = models
     .filter(model => model.status === 'active' || model.status === 'legacy')
     .map(model => ({
-      id: model.id,
+      id: registryId(model, models),
       model_version: model.modelVersion,
       label_space_id: model.labelSpaceId,
       legacy: model.legacy,
@@ -253,10 +271,10 @@ function renderManifest(release, models) {
 
 function renderPlugin(models) {
   const tasks = models.filter(model => model.status === 'active' || model.status === 'legacy').map(model => ({
-    id: model.id,
+    id: registryId(model, models),
     label: model.legacy ? `${model.label} (Legacy v${model.modelVersion})` : `${model.label} (v${model.modelVersion})`,
     modelAssets: [{
-      id: `musclemap-${model.id}`,
+      id: `musclemap-${registryId(model, models)}`,
       filename: model.filename,
       numClasses: model.numClasses,
       roiSize: model.roiSize,

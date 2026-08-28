@@ -2,7 +2,7 @@
 
 MuscleMap performs client-side MRI and CT muscle segmentation with official MuscleMap model definitions and ONNX Runtime Web. Images stay in the browser.
 
-The repository currently keeps whole-body v1.4 staged. Whole-body v1.3 remains active until the v1.4 ONNX candidate passes the MR and CT fidelity gate, is published, and is pinned by immutable Hugging Face revision. The five regional v0.0 models remain available as legacy models.
+Whole-body v1.4 is the default model. Whole-body v1.3 and the five regional v0.0 models remain selectable as legacy models.
 
 ## Run locally
 

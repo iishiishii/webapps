@@ -1,5 +1,11 @@
 # musclemap
 
+## 1.4.2
+
+### Patch Changes
+
+- Keep whole-body v1.3 available as a legacy model without changing the v1.4 default.
+
 ## 1.4.1
 
 ### Patch Changes

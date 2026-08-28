@@ -1,10 +1,10 @@
 import { LABEL_SPACES, MODELS, getModelByFilename } from './model-catalog.generated.js';
 
 export const MODEL_LABELS = Object.fromEntries(
-  MODELS.map(model => [model.filename, model.labelSpace.labels])
+  [...MODELS].reverse().map(model => [model.filename, model.labelSpace.labels])
 );
 
-export const LABELS = MODEL_LABELS['musclemap-wholebody.onnx'];
+export const LABELS = MODELS[0].labelSpace.labels;
 
 export function getLabelsForModel(modelName) {
   return MODEL_LABELS[modelName] || LABELS;
