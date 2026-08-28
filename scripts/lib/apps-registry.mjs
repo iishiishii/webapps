@@ -97,6 +97,10 @@ export async function loadAppsRegistry(path = registryPath) {
     if (app.model_manifest && !ASSET_MANIFEST_SCHEMAS.has(app.asset_manifest_schema)) {
       errors.push(`invalid asset manifest schema for ${app.id}: ${app.asset_manifest_schema}`);
     }
+    if (app.artifact_budget_bytes !== undefined &&
+        (!Number.isInteger(app.artifact_budget_bytes) || app.artifact_budget_bytes <= 0)) {
+      errors.push(`artifact_budget_bytes must be a positive integer for ${app.id}`);
+    }
     if (!app.title || !app.description || !app.source || !app.license) {
       errors.push(`incomplete catalog entry: ${app.id}`);
     }

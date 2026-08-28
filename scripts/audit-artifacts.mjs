@@ -8,7 +8,7 @@ import { validateAssetManifest } from './lib/scientific-assets.mjs';
 
 const maxCloudflareAsset = 25 * 1024 * 1024;
 const maxPagesSite = 750 * 1024 * 1024;
-const maxAppSize = 100 * 1024 * 1024;
+const defaultMaxAppSize = 100 * 1024 * 1024;
 const maxFileCount = 20_000;
 const maxDuplicateRatio = 0.10;
 const forbidden = [];
@@ -61,7 +61,8 @@ if (!selectedApp && totalBytes && duplicateBytes / totalBytes > maxDuplicateRati
   budgetErrors.push(`duplicate content is ${(duplicateBytes / totalBytes * 100).toFixed(1)}%; budget is ${maxDuplicateRatio * 100}%`);
 }
 for (const [app, size] of appSizes) {
-  if (size > maxAppSize) budgetErrors.push(`${app} is ${size} bytes; per-app budget is ${maxAppSize}`);
+  const budget = registry.apps.find(candidate => candidate.id === app)?.artifact_budget_bytes ?? defaultMaxAppSize;
+  if (size > budget) budgetErrors.push(`${app} is ${size} bytes; per-app budget is ${budget}`);
 }
 
 if (forbidden.length || oversized.length || manifestErrors.length || budgetErrors.length) {

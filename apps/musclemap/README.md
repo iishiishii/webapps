@@ -88,7 +88,7 @@ HF_TOKEN=... corepack pnpm --filter musclemap model:publish
 corepack pnpm --filter musclemap model:activate
 ```
 
-The v1.4 FP32 model and its provenance report are release assets for MuscleMap 1.4.1. The runtime verifies the model byte length and SHA-256 before inference. The publication scripts remain available for future Hugging Face releases that have matching conversion, fidelity, browser, upstream, and publication receipts.
+The v1.4 FP32 model and its provenance report are immutable model-release assets. During the web build, `prepare_model_assets.mjs` verifies the full model and creates five deployment parts below Cloudflare Pages' per-file limit. The browser downloads those parts from the app origin, verifies each part, reconstructs the model, and verifies the full SHA-256 before inference. The publication scripts remain available for future Hugging Face releases that have matching conversion, fidelity, browser, upstream, and publication receipts.
 
 Never commit fixture data, checkpoints, staged ONNX files, reports that contain private paths, or access tokens.
 

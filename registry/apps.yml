@@ -31,6 +31,7 @@ apps:
     runtime: static-esm
     model_manifest: models/musclemap.manifest.json
     asset_manifest_schema: scientific-assets-v1
+    artifact_budget_bytes: 160000000
     source: neurodesk/musclemap-webapp@8b5012b488bdf7727001c92b79eae826366ec1f0
     license: MIT
     maintainers: [neurodesk]

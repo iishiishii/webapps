@@ -72,6 +72,21 @@ function validateRelease(release, packageJson) {
       if (!Number.isInteger(model.asset.bytes) || model.asset.bytes <= 0) fail(`${model.id}.asset.bytes must be positive`);
       if (model.asset.url && !model.asset.url.startsWith('https://')) fail(`${model.id}.asset.url must use HTTPS`);
       if (!model.asset.validationReport) fail(`${model.id}.asset.validationReport is required`);
+      if (model.asset.parts) {
+        if (!Array.isArray(model.asset.parts) || model.asset.parts.length === 0) {
+          fail(`${model.id}.asset.parts must be a non-empty array`);
+        }
+        let partBytes = 0;
+        for (const part of model.asset.parts) {
+          if (!/^models\/[a-zA-Z0-9._-]+$/.test(part.path)) fail(`${model.id}.asset part path is invalid`);
+          if (!Number.isInteger(part.bytes) || part.bytes <= 0 || part.bytes > 25 * 1024 * 1024) {
+            fail(`${model.id}.asset part bytes must be within the Cloudflare Pages limit`);
+          }
+          assertHex(part.sha256, 64, `${model.id}.asset part sha256`);
+          partBytes += part.bytes;
+        }
+        if (partBytes !== model.asset.bytes) fail(`${model.id}.asset parts do not add up to the model bytes`);
+      }
     }
   }
 }
@@ -122,7 +137,8 @@ async function loadModel(releaseModel, release) {
     bytes: releaseModel.asset.bytes,
     sha256: releaseModel.asset.sha256,
     precision: releaseModel.asset.precision,
-    validationReport: releaseModel.asset.validationReport
+    validationReport: releaseModel.asset.validationReport,
+    parts: releaseModel.asset.parts || null
   } : null;
 
   return {
@@ -208,6 +224,7 @@ function renderManifest(release, models) {
       url: model.asset.url,
       bytes: model.asset.bytes,
       sha256: model.asset.sha256,
+      parts: model.asset.parts,
       source_record: model.source.record,
       source_doi: model.source.doi,
       license: model.source.license
@@ -249,7 +266,8 @@ function renderPlugin(models) {
       revision: model.asset.revision,
       url: model.asset.url,
       bytes: model.asset.bytes,
-      sha256: model.asset.sha256
+      sha256: model.asset.sha256,
+      parts: model.asset.parts
     }]
   }));
   return `import { definePlugin } from '../plugin.js';\n\n` +

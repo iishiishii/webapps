@@ -25,4 +25,5 @@ done
 
 echo "Done. Files saved to wasm/"
 echo ""
-echo "Note: MuscleMap downloads immutable, checksum-verified model assets from the release manifest."
+node "$SCRIPT_DIR/../scripts/prepare_model_assets.mjs"
+echo "Note: MuscleMap verifies immutable model assets and serves deployment parts from the app origin."

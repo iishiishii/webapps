@@ -623,35 +623,37 @@ async function fetchModel(asset, modelName, progressBase, progressSpan) {
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     postLog(`Downloading: ${displayName}${attempt === 2 ? ' (retry)' : ''}...`);
-    const response = await fetch(url, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`Failed to fetch model: ${response.status} ${response.statusText}`);
-
-    const contentLength = parseInt(response.headers.get('content-length'), 10);
-    const reader = response.body.getReader();
-    const chunks = [];
+    const sources = asset.parts?.length
+      ? asset.parts.map(part => ({
+          ...part,
+          url: new URL(`../${part.path}`, self.location.href).href
+        }))
+      : [{ url, bytes: asset.bytes, sha256: asset.sha256 }];
+    const data = new Uint8Array(asset.bytes);
     let received = 0;
     let lastReportedPercent = -1;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      received += value.length;
-      if (contentLength) {
-        const dlProgress = received / contentLength;
+    for (const source of sources) {
+      const response = await fetch(source.url, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Failed to fetch model: ${response.status} ${response.statusText}`);
+      const reader = response.body.getReader();
+      const partStart = received;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (received + value.length > data.length) throw new Error('Downloaded model exceeds the declared byte length');
+        data.set(value, received);
+        received += value.length;
+        const dlProgress = received / asset.bytes;
         const percent = Math.floor(dlProgress * 100);
         if (percent !== lastReportedPercent) {
           lastReportedPercent = percent;
           const mb = (received / 1048576).toFixed(1);
-          const totalMb = (contentLength / 1048576).toFixed(0);
+          const totalMb = (asset.bytes / 1048576).toFixed(0);
           postProgress(progressBase + dlProgress * progressSpan, `Downloading ${displayName} (${mb}/${totalMb} MB)`);
         }
       }
+      await MuscleMapAssetIntegrity.verifyAssetBuffer(data.slice(partStart, received).buffer, source);
     }
-
-    const data = new Uint8Array(received);
-    let offset = 0;
-    for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.length; }
 
     try {
       await MuscleMapAssetIntegrity.verifyAssetBuffer(data.buffer, asset);

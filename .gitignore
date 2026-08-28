@@ -30,6 +30,7 @@ Thumbs.db
 .tmp_weights/
 apps/musclemap/.tmp_model_env/
 apps/musclemap/.tmp_model_release/
+apps/musclemap/web/models/
 
 # Python
 __pycache__/

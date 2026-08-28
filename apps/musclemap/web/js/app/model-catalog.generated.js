@@ -64,7 +64,8 @@ export const MODEL_RELEASES = [
       "bytes": 26888722,
       "sha256": "3bff6e22e54d3d7399247d5e71d6423c91bb636d86ab21e0dd929524afbc2bc7",
       "precision": "q8",
-      "validationReport": "legacy-provenance-not-recorded"
+      "validationReport": "legacy-provenance-not-recorded",
+      "parts": null
     },
     "labelSpace": {
       "id": "musclemap-wholebody-v1.3",
@@ -1038,11 +1039,38 @@ export const MODEL_RELEASES = [
     },
     "asset": {
       "revision": "6380bd2487eeb47bdc59d63eef69fb0241bd1197",
-      "url": "https://github.com/neurodesk/webapps/releases/download/musclemap-v1.4.1/musclemap-wholebody-v1.4-fp32.onnx",
+      "url": "https://github.com/neurodesk/webapps/releases/download/musclemap-model-v1.4-fp32/musclemap-wholebody-v1.4-fp32.onnx",
       "bytes": 104946960,
       "sha256": "6380bd2487eeb47bdc59d63eef69fb0241bd11976712677ccee329f83552a1e6",
       "precision": "fp32",
-      "validationReport": "https://github.com/neurodesk/webapps/releases/download/musclemap-v1.4.1/musclemap-v1.4-conversion-evidence.json"
+      "validationReport": "https://github.com/neurodesk/webapps/releases/download/musclemap-model-v1.4-fp32/musclemap-v1.4-conversion-evidence.json",
+      "parts": [
+        {
+          "path": "models/musclemap-wholebody-v1.4-fp32.part-00",
+          "bytes": 21000000,
+          "sha256": "15a325c63285f00661dfabb58e924958ac9fd33b76868e0431988567c4b49781"
+        },
+        {
+          "path": "models/musclemap-wholebody-v1.4-fp32.part-01",
+          "bytes": 21000000,
+          "sha256": "1428e9754815bf1bf0fe269578e44788be5f6cffa3f110d880f7d05ca918db6a"
+        },
+        {
+          "path": "models/musclemap-wholebody-v1.4-fp32.part-02",
+          "bytes": 21000000,
+          "sha256": "4846fac49ecb36749b1ad937752d3ccf46c3a7ea48f4ebca4a1b4c71071b3e48"
+        },
+        {
+          "path": "models/musclemap-wholebody-v1.4-fp32.part-03",
+          "bytes": 21000000,
+          "sha256": "63246bd7ae1711fc560ae368a5ec07a168c6ca18c32ce1c62aa1193483fd9feb"
+        },
+        {
+          "path": "models/musclemap-wholebody-v1.4-fp32.part-04",
+          "bytes": 20946960,
+          "sha256": "899040852445f7082e4198aafabb20380ed9f2b54e77533500a64ed39b04906d"
+        }
+      ]
     },
     "labelSpace": {
       "id": "musclemap-wholebody-v1.4",
@@ -2146,7 +2174,8 @@ export const MODEL_RELEASES = [
       "bytes": 38999828,
       "sha256": "f2e64dd67104422f94c29382136aa438835aaea7aadc91a917178732cfc15d41",
       "precision": "q8",
-      "validationReport": "legacy-provenance-not-recorded"
+      "validationReport": "legacy-provenance-not-recorded",
+      "parts": null
     },
     "labelSpace": {
       "id": "musclemap-abdomen-v0.0",
@@ -2305,7 +2334,8 @@ export const MODEL_RELEASES = [
       "bytes": 26364376,
       "sha256": "48517f2aadc19183025dfe1a1952c24ae79d9a33fa5dd8154b46cf47fd87d3dd",
       "precision": "q8",
-      "validationReport": "legacy-provenance-not-recorded"
+      "validationReport": "legacy-provenance-not-recorded",
+      "parts": null
     },
     "labelSpace": {
       "id": "musclemap-forearm-v0.0",
@@ -2437,7 +2467,8 @@ export const MODEL_RELEASES = [
       "bytes": 39028867,
       "sha256": "3ad1c902998849ea66942863d157e1f8e608fb2c9d6b3230ee56de0e0840bcb4",
       "precision": "q8",
-      "validationReport": "legacy-provenance-not-recorded"
+      "validationReport": "legacy-provenance-not-recorded",
+      "parts": null
     },
     "labelSpace": {
       "id": "musclemap-leg-v0.0",
@@ -2650,7 +2681,8 @@ export const MODEL_RELEASES = [
       "bytes": 39023986,
       "sha256": "34babe3b30a587dc4f67f44da44a6f89f7f66dcd2d128351ecf9356cbc0c32e4",
       "precision": "q8",
-      "validationReport": "legacy-provenance-not-recorded"
+      "validationReport": "legacy-provenance-not-recorded",
+      "parts": null
     },
     "labelSpace": {
       "id": "musclemap-pelvis-v0.0",
@@ -2854,7 +2886,8 @@ export const MODEL_RELEASES = [
       "bytes": 39099153,
       "sha256": "2d1a607adfa0758516069e039717079a2340811e3d3c70a7e9621aa1564399f2",
       "precision": "q8",
-      "validationReport": "legacy-provenance-not-recorded"
+      "validationReport": "legacy-provenance-not-recorded",
+      "parts": null
     },
     "labelSpace": {
       "id": "musclemap-thigh-v0.0",

@@ -54,7 +54,9 @@ test('v1.4 whole-body contract matches the official network and labels', () => {
   assert.deepEqual(model.roiSize, [256, 256]);
   assert.equal(model.preprocessing.overlapDefault, 0.9);
   assert.equal(model.asset.precision, 'fp32');
-  assert.match(model.asset.url, /musclemap-v1\.4\.1\/musclemap-wholebody-v1\.4-fp32\.onnx$/);
+  assert.match(model.asset.url, /musclemap-model-v1\.4-fp32\/musclemap-wholebody-v1\.4-fp32\.onnx$/);
+  assert.equal(model.asset.parts.length, 5);
+  assert.equal(model.asset.parts.reduce((sum, part) => sum + part.bytes, 0), model.asset.bytes);
 
   const labelSpace = getLabelSpace('musclemap-wholebody-v1.4');
   assert.equal(labelSpace.labels.length, 114);
