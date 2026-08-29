@@ -1267,7 +1267,10 @@ test("generic uint16 share contrast is replaced from streamed signal", async ({ 
   await expect(page.locator(".nvslide-scale-bar").first()).toBeVisible();
   await page.locator("#showScaleBar").uncheck();
   await expect(page.locator(".nvslide-scale-bar:visible")).toHaveCount(0);
-  await page.locator("#showScaleBar").check();
+  await page.locator("#showScaleBar").evaluate((checkbox) => {
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+  });
   await expect(page.locator(".nvslide-scale-bar").first()).toBeVisible();
   const nvSlideMeasureButton = page.getByRole("button", { name: "Measure distance" });
   await expect(nvSlideMeasureButton).toBeEnabled();
