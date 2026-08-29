@@ -4961,6 +4961,7 @@ async function drainAdaptiveLodRequests(): Promise<void> {
     )
   } finally {
     adaptiveLodRunning = false
+    syncViewControls()
     if (adaptiveLodRequested) void drainAdaptiveLodRequests()
   }
 }
