@@ -20,9 +20,19 @@ import {
 import { AbortableTaskPool } from './abortable_task_pool'
 import { getBackendFromUrl } from './backend'
 import {
+  DEFAULT_LAYOUT_ID,
   LAYOUT_PRESET,
   viewerLayoutConfig,
 } from './viewer_layout'
+import {
+  mountNvSlideView,
+  type Fraction3,
+  type NvSlideMeasurementCreation,
+  type NvSlidePaneView,
+  type NvSlideViewHandle,
+  type NvSlideViewState,
+} from './nvslide_view.ts'
+import { formatMeasuredDistance } from './nvslide_measurement.ts'
 import {
   buildDandiZarrAssetHierarchy,
   searchDandiZarrAssets,
@@ -68,6 +78,10 @@ import {
   type MosaicBlockLayout,
 } from './mosaic_layout'
 import { createMosaicChunkedVolumeSource } from './mosaic_chunked_source.ts'
+import {
+  planeViewportExportGeometry,
+  type VolumePlane,
+} from './volume_plane_source.ts'
 import {
   compositeMosaicBlocks,
   mosaicSamplingWindow,
@@ -424,6 +438,8 @@ const els = {
   shareStatus: el<HTMLOutputElement>('shareStatus'),
   downloadStatus: el<HTMLOutputElement>('downloadStatus'),
   canvas: el<HTMLCanvasElement>('nv-canvas'),
+  nvslideView: el<HTMLElement>('nvslideView'),
+  viewer: el<HTMLElement>('viewer'),
   hud: el<HTMLDivElement>('hud'),
   chunkStrip: el<HTMLDivElement>('chunkStrip'),
   fallback: el<HTMLDivElement>('fallback'),
@@ -438,8 +454,10 @@ const els = {
 let nv: NiiVue | null = null
 let activeSource: LoadedSource | null = null
 let activeReadSession: ZarrReadSession | null = null
+let activeChunkSource: ChunkedVolumeSource | null = null
 let chunkPlan: ChunkPlan | null = null
 let chunkedVolume: NVChunkedVolume | null = null
+let nvSlideView: NvSlideViewHandle | null = null
 let stats: RangeStats = freshStats()
 let pollHandle = 0
 let displayedLoadingTiles = -1
@@ -489,6 +507,7 @@ interface StainLayerRuntime {
   source: OmezarrSource | OmezarrMosaicSource
   readSession: ZarrReadSession
   chunkedVolume: NVChunkedVolume
+  chunkSource: ChunkedVolumeSource
   detailLevel: number
   lastAdaptiveRequestKey: string | null
 }
@@ -533,7 +552,7 @@ interface CameraView {
 
 function defaultShareState(): ShareableViewState {
   return {
-    layout: Number(els.layout.value),
+    layout: DEFAULT_LAYOUT_ID,
     azimuth: 110,
     elevation: 15,
     scale: 1,
@@ -700,6 +719,60 @@ function currentMosaicFovGeometry(source: OmezarrMosaicSource): ExportGeometry {
   }
 }
 
+function currentNvSlideFovGeometry(
+  source: OmezarrSource | OmezarrMosaicSource,
+  pane: NvSlidePaneView | null = nvSlideView?.activePaneView() ?? null,
+): ExportGeometry | null {
+  if (!nvSlideLayoutActive() || !pane || pane.sourceId !== source.id) {
+    return null
+  }
+  if (source.kind === 'omezarr-mosaic') {
+    const mosaicLevel = source.levels[pane.sourceLevelIndex]
+    const readableLevel = mosaicLevel?.blocks[0]?.level
+    if (!mosaicLevel || !readableLevel) return null
+    const crop = planeViewportExportGeometry({
+      plane: pane.plane,
+      level: {
+        level: mosaicLevel.level,
+        shape: mosaicLevel.shape,
+        spacing: mosaicLevel.spacing,
+      },
+      baseShape: source.shape,
+      baseNormalIndex: pane.baseNormalIndex,
+      manifestWidth: pane.manifestWidth,
+      manifestHeight: pane.manifestHeight,
+      slideBounds: pane.slideBounds,
+    })
+    return {
+      shape: crop.shape,
+      spacing: crop.spacing,
+      origin: crop.origin,
+      level: readableLevel,
+      levelIndex: mosaicLevel.level,
+      worldOrigin: mosaicLevel.worldOrigin,
+    }
+  }
+  const level = source.levels[pane.sourceLevelIndex]
+  if (!level) return null
+  const crop = planeViewportExportGeometry({
+    plane: pane.plane,
+    level,
+    baseShape: source.shape,
+    baseNormalIndex: pane.baseNormalIndex,
+    manifestWidth: pane.manifestWidth,
+    manifestHeight: pane.manifestHeight,
+    slideBounds: pane.slideBounds,
+  })
+  return {
+    shape: crop.shape,
+    spacing: crop.spacing,
+    origin: crop.origin,
+    level,
+    levelIndex: level.level,
+    worldOrigin: level.translation,
+  }
+}
+
 function sourceExportGeometry(source: LoadedSource): ExportGeometry {
   if (source.kind === 'synthetic') {
     return {
@@ -711,8 +784,10 @@ function sourceExportGeometry(source: LoadedSource): ExportGeometry {
       worldOrigin: [0, 0, 0],
     }
   }
-  if (source.kind === 'omezarr-mosaic') return currentMosaicFovGeometry(source)
-  return renderCropGeometry ?? currentFovGeometry(source)
+  if (source.kind === 'omezarr-mosaic') {
+    return currentNvSlideFovGeometry(source) ?? currentMosaicFovGeometry(source)
+  }
+  return renderCropGeometry ?? currentNvSlideFovGeometry(source) ?? currentFovGeometry(source)
 }
 
 function exportGridLevel(
@@ -1018,6 +1093,22 @@ function setWindowControls(win: DisplayWindow, dtype: SupportedDtype): void {
   syncWindowControlValues()
 }
 
+function commitAppliedWindow(
+  source: LoadedSource,
+  win: DisplayWindow,
+): void {
+  if (
+    activeSource !== source ||
+    source.defaultWindow.min !== win.min ||
+    source.defaultWindow.max !== win.max
+  ) {
+    return
+  }
+  els.canvas.dataset.windowMin = String(win.min)
+  els.canvas.dataset.windowMax = String(win.max)
+  syncNvSlideView()
+}
+
 function prepareAutoWindow(source: LoadedSource): void {
   autoWindowSession = null
   els.autoContrast.disabled = true
@@ -1068,12 +1159,25 @@ function observeChunkForAutoWindow(
     session.lastMaximum = estimated.max
     source.defaultWindow = estimated
     setWindowControls(estimated, source.dtype)
+    const revision = session.manualRevision
     window.setTimeout(() => {
-      if (!nv || activeSource !== source || nv.volumes.length === 0) return
+      if (
+        !nv ||
+        activeSource !== source ||
+        manualWindowRevision !== revision ||
+        source.defaultWindow !== estimated ||
+        nv.volumes.length === 0
+      ) {
+        return
+      }
       const volumeIndex = volumeIndexForSource(source)
       if (volumeIndex < 0) return
       void nv
         .setVolume(volumeIndex, { calMin: estimated.min, calMax: estimated.max })
+        .then(() => {
+          if (manualWindowRevision !== revision) return
+          commitAppliedWindow(source, estimated)
+        })
         .catch((error: unknown) => {
           showFallback(
             `Automatic contrast failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -1106,6 +1210,7 @@ function applyAutoContrast(): void {
   contrast.source.defaultWindow = contrast.window
   setWindowControls(contrast.window, contrast.source.dtype)
   window.clearTimeout(windowUpdateHandle)
+  const revision = manualWindowRevision
   const volumeIndex = volumeIndexForSource(contrast.source)
   if (volumeIndex < 0) return
   const exactWindow = contrast.window
@@ -1115,9 +1220,8 @@ function applyAutoContrast(): void {
       calMax: exactWindow.max,
     })
     .then(() => {
-      if (activeSource !== source) return
-      els.canvas.dataset.windowMin = String(exactWindow.min)
-      els.canvas.dataset.windowMax = String(exactWindow.max)
+      if (manualWindowRevision !== revision) return
+      commitAppliedWindow(source, exactWindow)
     })
     .catch((error: unknown) => {
       showFallback(
@@ -1185,9 +1289,8 @@ function scheduleWindowUpdate(): void {
     void nv
       .setVolume(volumeIndex, { calMin: win.min, calMax: win.max })
       .then(() => {
-        if (activeSource !== source || manualWindowRevision !== revision) return
-        els.canvas.dataset.windowMin = String(win.min)
-        els.canvas.dataset.windowMax = String(win.max)
+        if (manualWindowRevision !== revision) return
+        commitAppliedWindow(source, win)
       })
       .catch((error: unknown) => {
         showFallback(
@@ -1303,6 +1406,7 @@ function activateStainRuntime(runtime: StainLayerRuntime): void {
   activeSource = runtime.source
   activeReadSession = runtime.readSession
   chunkedVolume = runtime.chunkedVolume
+  activeChunkSource = runtime.chunkSource
   chunkPlan = runtime.chunkedVolume.currentPlan
   currentDetailLevel = runtime.detailLevel
   lastAdaptiveRequestKey = runtime.lastAdaptiveRequestKey
@@ -1316,6 +1420,7 @@ function activateStainRuntime(runtime: StainLayerRuntime): void {
   syncActiveLodIndicator(chunkPlan)
   syncViewControls()
   syncDownloadControl()
+  syncNvSlideView()
 }
 
 function waitForStainLayerUploads(signal?: AbortSignal): Promise<void> {
@@ -1442,8 +1547,7 @@ async function updateStainLayerVisibilityNow(
       signal.throwIfAborted()
       if (selectedLayerId === activeStainLayerId) {
         setWindowControls(selectedWindow, selectedRuntime.source.dtype)
-        els.canvas.dataset.windowMin = String(selectedWindow.min)
-        els.canvas.dataset.windowMax = String(selectedWindow.max)
+        commitAppliedWindow(selectedRuntime.source, selectedWindow)
       }
     }
   }
@@ -2263,6 +2367,8 @@ function initControlsFromUrl(): void {
 
 function updateUrlFromControls(): void {
   const url = new URL(window.location.href)
+  url.searchParams.delete('deepZoomPrototype')
+  url.searchParams.delete('variant')
   const kind = currentSourceKind()
   url.searchParams.set('source', els.source.value)
   url.searchParams.set('detailBudget', String(currentDetailBudgetGiB()))
@@ -2764,7 +2870,7 @@ function createChunkPlan(source: RangeSource): ChunkPlan {
 }
 
 function createRangeChunkSource(source: RangeSource): VolumeChunkSource {
-  const cache = new Map<number, Promise<Uint8Array>>()
+  const cache = new Map<number, Uint8Array>()
   return (request) => {
     const cached = cache.get(request.chunkIndex)
     if (cached) return cached
@@ -2784,15 +2890,20 @@ function createRangeChunkSource(source: RangeSource): VolumeChunkSource {
     const requestKey = rangeRequestKey(request.chunkIndex)
     stats.requested.add(requestKey)
     const start = request.chunkIndex * source.chunkBytes
-    const next = fetchByteRange(source.dataUrl, start, source.chunkBytes).then(
+    const next = fetchByteRange(
+      source.dataUrl,
+      start,
+      source.chunkBytes,
+      request.signal,
+    ).then(
       (bytes) => {
+        cache.set(request.chunkIndex, bytes)
         stats.completed.add(requestKey)
         stats.decodedBytes += bytes.byteLength
         renderHud()
         return bytes
       },
     )
-    cache.set(request.chunkIndex, next)
     renderHud()
     return next
   }
@@ -2923,7 +3034,10 @@ function createMosaicPyramidSource(
   return createMosaicChunkedVolumeSource({
     datatypeCode: source.datatypeCode,
     levels: source.levels,
-    signal: () => readSession.signal,
+    signal: (requestSignal) =>
+      requestSignal
+        ? readSession.signalFor(requestSignal)
+        : readSession.lifetimeSignal,
     concurrency: ZARR_REGION_CONCURRENCY,
     fetchRegion: async (level, request, signal) => {
       const key = mosaicRequestKey(
@@ -2970,7 +3084,9 @@ function createOmezarrPyramidSource(
       spacing: level.spacing,
     })),
     fetchChunk: (request) => {
-      const signal = readSession.signal
+      const signal = request.signal
+        ? readSession.signalFor(request.signal)
+        : readSession.lifetimeSignal
       return reads.run(signal, async () => {
         const level = source.levels[request.levelIndex]
         if (!level) {
@@ -3038,6 +3154,7 @@ function createOmezarrRenderCropVolume(
     calMax: win.max,
     colormap: els.colormap.value,
     chunkSource: async (request) => {
+      const signal = readSession.signalFor(request.signal)
       const texOrigin = absoluteCropOrigin(
         geometry.origin,
         request.desc.texOrigin,
@@ -3055,7 +3172,7 @@ function createOmezarrRenderCropVolume(
             texDims,
             bytesPerVoxel: request.bytesPerVoxel,
           },
-          readSession.signal,
+          signal,
         )
         observeChunkForAutoWindow(source, bytes)
         stats.completed.add(key)
@@ -3703,7 +3820,10 @@ function syncStatsVisibility(): void {
 
 function syncScaleIndicatorVisibility(): void {
   els.scaleIndicators.hidden =
-    !els.showScaleBar.checked || !nv || nv.volumes.length === 0
+    nvSlideLayoutActive() ||
+    !els.showScaleBar.checked ||
+    !nv ||
+    nv.volumes.length === 0
   els.visibleLevel.hidden =
     els.scaleIndicators.hidden || els.visibleLevel.value.length === 0
 }
@@ -3731,6 +3851,7 @@ function syncScaleBarVisibility(): void {
     !els.showScaleBar.checked || els.visibleLevel.value.length === 0
   syncScaleIndicatorVisibility()
   syncTileLoadingIndicator()
+  syncNvSlideView()
 }
 
 function syncCrosshairVisibility(): void {
@@ -3745,26 +3866,20 @@ function syncCrosshairVisibility(): void {
   syncCrosshairAppearance()
   nv.drawScene()
   syncCrosshairOverlay()
-}
-
-function formatMeasuredDistance(distanceMM: number): string {
-  if (distanceMM < 1) {
-    const micrometres = distanceMM * 1000
-    return `${micrometres.toFixed(micrometres < 10 ? 1 : 0)} µm`
-  }
-  return `${distanceMM.toFixed(distanceMM < 10 ? 2 : 1)} mm`
+  syncNvSlideView()
 }
 
 function syncInteractionTool(): void {
   if (!nv) return
   const isRender = nv.sliceType === SLICE_TYPE.RENDER
+  const isNvSlide = nvSlideLayoutActive()
   const measureRequested = els.interactionTool.getAttribute('aria-pressed') === 'true'
   const isMeasuring = measureRequested && !isRender
-  nv.primaryDragMode = isMeasuring
+  nv.primaryDragMode = isMeasuring && !isNvSlide
     ? DRAG_MODE.measurement
     : DRAG_MODE.crosshairPan
   els.interactionTool.disabled = isRender
-  els.canvas.style.cursor = isMeasuring ? 'crosshair' : 'default'
+  els.canvas.style.cursor = isMeasuring && !isNvSlide ? 'crosshair' : 'default'
   if (isRender) {
     els.measurementStatus.value = 'measure in a slice view'
   } else if (isMeasuring && els.clearMeasurements.disabled) {
@@ -3772,6 +3887,7 @@ function syncInteractionTool(): void {
   } else if (!isMeasuring) {
     els.measurementStatus.value = 'crosshair movement active'
   }
+  syncNvSlideView()
 }
 
 function toggleInteractionTool(): void {
@@ -3782,11 +3898,65 @@ function toggleInteractionTool(): void {
 
 function clearMeasurements(): void {
   nv?.clearMeasurements()
+  syncNvSlideView()
   els.clearMeasurements.disabled = true
   els.measurementStatus.value =
     els.interactionTool.getAttribute('aria-pressed') === 'true'
       ? 'drag across a structure'
       : 'crosshair movement active'
+}
+
+function sliceTypeForVolumePlane(plane: VolumePlane): number {
+  switch (plane) {
+    case 'axial':
+      return SLICE_TYPE.AXIAL
+    case 'coronal':
+      return SLICE_TYPE.CORONAL
+    case 'sagittal':
+      return SLICE_TYPE.SAGITTAL
+  }
+  const exhaustive: never = plane
+  return exhaustive
+}
+
+function addNvSlideMeasurement(
+  measurement: NvSlideMeasurementCreation,
+): void {
+  if (!nv) return
+  nv.model.completedMeasurements.push({
+    startMM: [
+      measurement.startMM[0],
+      measurement.startMM[1],
+      measurement.startMM[2],
+    ],
+    endMM: [
+      measurement.endMM[0],
+      measurement.endMM[1],
+      measurement.endMM[2],
+    ],
+    distance: measurement.distance,
+    sliceIndex: 0,
+    sliceType: sliceTypeForVolumePlane(measurement.plane),
+    slicePosition: measurement.slicePosition,
+  })
+  nv.drawScene()
+  els.clearMeasurements.disabled = false
+  els.measurementStatus.value =
+    `${formatMeasuredDistance(measurement.distance)} · right-click to remove`
+  syncNvSlideView()
+}
+
+function removeNvSlideMeasurement(index: number): void {
+  if (!nv) return
+  nv.model.completedMeasurements.splice(index, 1)
+  nv.drawScene()
+  const remaining = nv.model.completedMeasurements.length
+  els.clearMeasurements.disabled = remaining === 0
+  els.measurementStatus.value =
+    remaining === 0
+      ? 'drag across a structure'
+      : `${remaining} measurement${remaining === 1 ? '' : 's'} · right-click to remove`
+  syncNvSlideView()
 }
 
 function handleMeasurementContextMenu(event: MouseEvent): void {
@@ -3818,6 +3988,7 @@ function handleMeasurementContextMenu(event: MouseEvent): void {
     remaining === 0
       ? 'drag across a structure'
       : `${remaining} measurement${remaining === 1 ? '' : 's'} · right-click to remove`
+  syncNvSlideView()
 }
 
 function resetRenderCropForSourceChange(): void {
@@ -3825,7 +3996,7 @@ function resetRenderCropForSourceChange(): void {
   renderCropGeometry = null
   sliceViewBeforeRender = null
   if (!nv || nv.sliceType !== SLICE_TYPE.RENDER) return
-  els.layout.value = String(LAYOUT_PRESET.AXIAL_FOCUS)
+  els.layout.value = String(DEFAULT_LAYOUT_ID)
   nv.renderPivotMM = null
   nv.sliceType = SLICE_TYPE.MULTIPLANAR
 }
@@ -3887,22 +4058,42 @@ function selectedLayoutConfig() {
 }
 
 function selectedSliceType(): number {
-  return selectedLayoutConfig().sliceType
+  return selectedLayoutConfig().niivue.sliceType
+}
+
+function nvSlideLayoutActive(): boolean {
+  return selectedLayoutConfig().kind === 'nvslide'
 }
 
 function applyLayout(): void {
   if (!nv) return
   const layout = selectedLayoutConfig()
+  const niivue = layout.niivue
   nv.customLayout = null
-  nv.showRender = layout.showRender
-  nv.multiplanarType = layout.multiplanarType
-  nv.isEqualSize = layout.isEqualSize
-  nv.sliceType = layout.sliceType
-  nv.customLayout = layout.customLayout
+  nv.showRender = niivue.showRender
+  nv.multiplanarType = niivue.multiplanarType
+  nv.isEqualSize = niivue.isEqualSize
+  nv.sliceType = niivue.sliceType
+  nv.customLayout = niivue.customLayout
+  const nvSlideActive = layout.kind === 'nvslide'
+  els.viewer.classList.toggle('nvslide-layout-active', nvSlideActive)
+  els.canvas.setAttribute('aria-hidden', String(nvSlideActive))
+  els.canvas.tabIndex = nvSlideActive ? -1 : 0
+  els.showScaleBar.disabled = false
+  els.showScaleBar.title = ''
+  els.colormap.disabled = nvSlideActive
+  els.colormap.title = nvSlideActive
+    ? 'NVSlide currently uses grayscale windowing.'
+    : ''
   if (Number(els.layout.value) === LAYOUT_PRESET.EQUAL_SLICES_VERTICAL) {
     nv.pan2Dxyzmm = crosshairCenteredPan(viewerZoom())
   }
+  syncNvSlideView()
   requestAnimationFrame(() => {
+    if (!nvSlideActive) {
+      nv?.resize()
+      nv?.drawScene()
+    }
     syncPrototypeStreamingState()
     if (stainLayerRuntimes.size > 1) {
       multiStainDetailChangeRequested = true
@@ -3977,7 +4168,7 @@ async function applyLayoutControl(): Promise<void> {
     const view = sliceViewBeforeRender
     renderCropGeometry = null
     sliceViewBeforeRender = null
-    els.layout.value = String(LAYOUT_PRESET.AXIAL_FOCUS)
+    els.layout.value = String(DEFAULT_LAYOUT_ID)
     nv.sliceType = SLICE_TYPE.MULTIPLANAR
     await reloadVolume({ view })
     showFallback(
@@ -4183,6 +4374,69 @@ function syncPrototypeStreamingState(): void {
     .join(';')
   delete els.canvas.dataset.streamingPrimaryPlane
   delete els.canvas.dataset.streamingAxisZooms
+}
+
+function syncNvSlideView(): void {
+  if (!nvSlideView) return
+  if (!nvSlideLayoutActive()) {
+    nvSlideView.update({ kind: 'hidden' })
+    return
+  }
+  const source = activeSource
+  if (
+    !source ||
+    !activeChunkSource ||
+    source.kind === 'synthetic' ||
+    renderCropGeometry
+  ) {
+    const state: NvSlideViewState = {
+      kind: 'unavailable',
+      reason: renderCropGeometry
+        ? 'NVSlide is available in 2D layouts.'
+        : 'Load an OME-Zarr source to use NVSlide.',
+    }
+    nvSlideView.update(state)
+    return
+  }
+  const win = source.defaultWindow
+  const crosshair = nv?.crosshairPos ?? focusFraction
+  const state: NvSlideViewState = {
+    kind: 'ready',
+    source: activeChunkSource,
+    sourceId: source.id,
+    sourceName: source.name,
+    window: [win.min, win.max],
+    crosshair: [
+      crosshair[0] ?? 0.5,
+      crosshair[1] ?? 0.5,
+      crosshair[2] ?? 0.5,
+    ],
+    zoom: Math.max(0.01, viewerZoom()),
+    showCrosshair: els.showCrosshair.checked,
+    showScaleBar: els.showScaleBar.checked,
+    interactionMode:
+      els.interactionTool.getAttribute('aria-pressed') === 'true'
+        ? 'measurement'
+        : 'navigation',
+    measurements: nv?.model.completedMeasurements ?? [],
+  }
+  nvSlideView.update(state)
+}
+
+function applyNvSlideCrosshair(
+  crosshair: Fraction3,
+): void {
+  if (!nv) return
+  const next: Shape3 = [crosshair[0], crosshair[1], crosshair[2]]
+  nv.crosshairPos = next
+  focusFraction = next
+  nv.drawScene()
+  syncAxialSliceControl()
+  syncPrototypeStreamingState()
+  syncViewControls()
+  syncDownloadControl()
+  scheduleAdaptiveLod(true)
+  syncNvSlideView()
 }
 
 function syncCrosshairAppearance(): void {
@@ -4815,17 +5069,24 @@ async function refocusMultiStainVolumes(
 }
 
 async function disposeChunkedVolume(): Promise<void> {
+  nvSlideView?.update(
+    nvSlideLayoutActive()
+      ? { kind: 'unavailable', reason: 'The volume is being replaced.' }
+      : { kind: 'hidden' },
+  )
   for (const runtime of stainLayerRuntimes.values()) {
     runtime.readSession.abort('All stain layers disposed')
     runtime.chunkedVolume.dispose()
   }
   stainLayerRuntimes.clear()
   chunkedVolume = null
+  activeChunkSource = null
   activeReadSession = null
   currentDetailLevel = null
   lastAdaptiveRequestKey = null
   if (nv && nv.volumes.length > 0) await nv.removeAllVolumes()
   syncStainLayerTelemetry()
+  syncNvSlideView()
 }
 
 async function loadOmezarrVolume(
@@ -4850,8 +5111,9 @@ async function loadOmezarrVolume(
   )
   currentDetailLevel = minLevel
   const volumeId = `${layer?.id ?? source.id}-render-${++streamedVolumeRevision}`
+  activeChunkSource = createOmezarrPyramidSource(source, readSession)
   chunkedVolume = await nv.loadChunkedVolume(
-    createOmezarrPyramidSource(source, readSession),
+    activeChunkSource,
     {
       // NiiVue keys its streamed texture cache by volume URL, which defaults
       // to the id. A controller rebuilt with a disposed id can otherwise reuse
@@ -4888,6 +5150,7 @@ async function loadOmezarrVolume(
   restoreView(view)
   syncCrosshairAppearance()
   nv.drawScene()
+  syncNvSlideView()
 }
 
 async function loadMosaicVolume(
@@ -4912,8 +5175,9 @@ async function loadMosaicVolume(
   )
   currentDetailLevel = minLevel
   const volumeId = `${layer?.id ?? source.id}-render-${++streamedVolumeRevision}`
+  activeChunkSource = createMosaicPyramidSource(source, readSession)
   chunkedVolume = await nv.loadChunkedVolume(
-    createMosaicPyramidSource(source, readSession),
+    activeChunkSource,
     {
       id: volumeId,
       name: layer?.name ?? source.name,
@@ -4945,6 +5209,7 @@ async function loadMosaicVolume(
   restoreView(view)
   syncCrosshairAppearance()
   nv.drawScene()
+  syncNvSlideView()
 }
 
 async function loadOmezarrRenderCrop(
@@ -4953,9 +5218,11 @@ async function loadOmezarrRenderCrop(
   readSession: ZarrReadSession,
 ): Promise<void> {
   if (!nv) return
+  nvSlideView?.update({ kind: 'hidden' })
   const level = geometry.level
   if (!level) throw new Error('The 3D current FOV has no pyramid level')
   currentDetailLevel = level.level
+  activeChunkSource = null
   const { volume, plan } = createOmezarrRenderCropVolume(
     source,
     geometry,
@@ -5003,12 +5270,20 @@ async function performReloadVolume(
   const nextReadSession = new ZarrReadSession(taskSignal)
   suppressAdaptiveEvents = true
   try {
+    if (options.reloadSource) {
+      nvSlideView?.update(
+        nvSlideLayoutActive()
+          ? { kind: 'unavailable', reason: 'Loading the volume…' }
+          : { kind: 'hidden' },
+      )
+    }
     if (options.reloadSource && targetLayerId) {
       await removeStainLayerRuntime(targetLayerId)
     }
     if (options.reloadSource || !activeSource) {
       activeSource = null
       chunkedVolume = null
+      activeChunkSource = null
       activeReadSession = null
       currentDetailLevel = null
       lastAdaptiveRequestKey = null
@@ -5073,6 +5348,7 @@ async function performReloadVolume(
     if (
       targetLayerId &&
       chunkedVolume &&
+      activeChunkSource &&
       (activeSource.kind === 'omezarr' || activeSource.kind === 'omezarr-mosaic')
     ) {
       const runtime: StainLayerRuntime = {
@@ -5080,6 +5356,7 @@ async function performReloadVolume(
         source: activeSource,
         readSession: nextReadSession,
         chunkedVolume,
+        chunkSource: activeChunkSource,
         detailLevel: currentDetailLevel ?? activeSource.baseLevel,
         lastAdaptiveRequestKey,
       }
@@ -5126,6 +5403,7 @@ async function main(): Promise<void> {
   syncStatsVisibility()
 
   const initialLayout = selectedLayoutConfig()
+  const initialNiiVueLayout = initialLayout.niivue
   nv = new NiiVue({
     backend: BACKEND,
     backgroundColor: [0.02, 0.03, 0.03, 1],
@@ -5135,15 +5413,24 @@ async function main(): Promise<void> {
     isRulerVisible: els.showScaleBar.checked,
     crosshairWidth: 0.5,
     primaryDragMode: DRAG_MODE.crosshairPan,
-    sliceType: initialLayout.sliceType,
-    showRender: initialLayout.showRender,
-    multiplanarType: initialLayout.multiplanarType,
-    isEqualSize: initialLayout.isEqualSize,
-    customLayout: initialLayout.customLayout,
+    sliceType: initialNiiVueLayout.sliceType,
+    showRender: initialNiiVueLayout.showRender,
+    multiplanarType: initialNiiVueLayout.multiplanarType,
+    isEqualSize: initialNiiVueLayout.isEqualSize,
+    customLayout: initialNiiVueLayout.customLayout,
     maxTextureDimension3D: STREAMING_CHUNK_EDGE,
     maxChunkResidencyBytes: DEFAULT_RESIDENCY_BYTES,
   })
   await nv.attachToCanvas(els.canvas)
+  nvSlideView = mountNvSlideView(els.nvslideView, {
+    onCrosshairChange: applyNvSlideCrosshair,
+    onMeasurementCreate: addNvSlideMeasurement,
+    onMeasurementRemove: removeNvSlideMeasurement,
+    onActivePaneChange: () => {
+      syncDownloadControl()
+    },
+  })
+  syncNvSlideView()
   syncCrosshairVisibility()
   els.canvas.addEventListener('pointerdown', () => {
     els.canvas.focus({ preventScroll: true })
@@ -5160,11 +5447,13 @@ async function main(): Promise<void> {
       syncViewControls()
       syncDownloadControl()
       scheduleAdaptiveLod(focusMoved)
+      syncNvSlideView()
     } else if (event.detail.property === 'scaleMultiplier') {
       syncCrosshairAppearance()
       syncViewControls()
       syncDownloadControl()
       scheduleAdaptiveLod()
+      syncNvSlideView()
     } else if (event.detail.property === 'renderPan') {
       syncViewControls()
     }
@@ -5172,11 +5461,13 @@ async function main(): Promise<void> {
   nv.addEventListener('measurementCompleted', (event) => {
     els.measurementStatus.value = `${formatMeasuredDistance(event.detail.distance)} · right-click to remove`
     els.clearMeasurements.disabled = false
+    syncNvSlideView()
   })
   nv.addEventListener('locationChange', () => {
     syncAxialSliceControl()
     syncPrototypeStreamingState()
     scheduleAdaptiveLod(true)
+    syncNvSlideView()
   })
 
   els.source.addEventListener('change', () => {

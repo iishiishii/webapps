@@ -52,3 +52,7 @@ test('maps legacy multiplanar links onto the new layout presets', () => {
 test('restores the vertical equal-slices preset', () => {
   assert.equal(readShareState(new URLSearchParams('layout=33'), state).layout, 33)
 })
+
+test('restores the permanent NVSlide layout', () => {
+  assert.equal(readShareState(new URLSearchParams('layout=34'), state).layout, 34)
+})
