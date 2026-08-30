@@ -12,6 +12,7 @@ import { InferenceExecutor } from './controllers/InferenceExecutor.js';
 import { ConsoleOutput } from '@neurodesk/webapp-components/ui';
 import { ProgressManager } from '@neurodesk/webapp-components/ui';
 import { ModalManager } from '@neurodesk/webapp-components/ui';
+import { downloadBlob } from '@neurodesk/webapp-components/file-io';
 import { MuscleLegend } from './modules/ui/MuscleLegend.js';
 import { MetricsSummary } from './modules/ui/MetricsSummary.js';
 import { FallbackNiftiPreview } from './modules/fallback-nifti-preview.js';
@@ -689,16 +690,13 @@ class MuscleMapApp {
 
   downloadFile(file, name = file?.name || 'download.nii') {
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadBlob(file, name);
   }
 
+  // Kept local instead of the shared @neurodesk/webapp-components/file-io
+  // createNiftiFromVolume: the shared helper coerces every volume to float32,
+  // while scene downloads must preserve the source datatype (uint8
+  // segmentations, int16 inputs, float64 maps).
   createNiftiFromVolume(vol) {
     const hdr = vol.hdr;
     const img = vol.img;

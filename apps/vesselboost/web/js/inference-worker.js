@@ -334,9 +334,12 @@ function createOutputNifti(uint8Data, sourceHeader, dims) {
   destView.setFloat32(112, 1, true);  // scl_slope
   destView.setFloat32(116, 0, true);  // scl_inter
 
-  // cal_min/cal_max for binary mask
-  destView.setFloat32(124, 1, true);   // cal_max
-  destView.setFloat32(128, 0, true);   // cal_min
+  let maxVal = 0;
+  for (let i = 0; i < uint8Data.length; i++) {
+    if (uint8Data[i] > maxVal) maxVal = uint8Data[i];
+  }
+  destView.setFloat32(124, Math.max(1, maxVal), true);  // cal_max
+  destView.setFloat32(128, 0, true);                    // cal_min
 
   new Uint8Array(buffer, headerSize).set(uint8Data);
   return buffer;
@@ -1050,9 +1053,21 @@ async function fetchModel(url, modelName, progressBase, progressSpan) {
     }
   } catch (e) { /* cache miss */ }
 
-  postLog(`Downloading: ${displayName}...`);
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Failed to fetch model: ${response.status} ${response.statusText}`);
+  let response = null;
+  let lastError = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      postLog(`Downloading: ${displayName}${attempt > 1 ? ' (retry)' : ''}...`);
+      response = await fetch(url, { cache: attempt > 1 ? 'reload' : 'default' });
+      if (response.ok) break;
+      lastError = new Error(`Failed to fetch model: ${response.status} ${response.statusText}`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (!response || !response.ok) {
+    throw lastError || new Error(`Failed to fetch model: ${displayName}`);
+  }
 
   const contentLength = parseInt(response.headers.get('content-length'), 10);
   const reader = response.body.getReader();
@@ -1075,6 +1090,12 @@ async function fetchModel(url, modelName, progressBase, progressSpan) {
   const data = new Uint8Array(received);
   let offset = 0;
   for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.length; }
+  if (data.byteLength <= 100000) {
+    try {
+      await localforage.removeItem(cacheKey);
+    } catch (e) { /* ignore cleanup failure */ }
+    throw new Error(`Downloaded model asset is unexpectedly small: ${displayName}`);
+  }
 
   try {
     await localforage.setItem(cacheKey, data.buffer);

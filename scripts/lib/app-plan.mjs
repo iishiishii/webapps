@@ -19,6 +19,8 @@ function matrixEntry(app) {
     rust_wasm: toolchains.has('rust-wasm'),
     python_reference: toolchains.has('python-reference'),
     shared_runtime: app.ci.shared_runtime,
+    browser_test: app.ci.browser_test,
+    app_scoped_runtime: app.app_scoped_runtime_families.length > 0,
     release_test: app.ci.release_test ?? 'test',
   };
 }
@@ -50,12 +52,12 @@ export function selectAffectedApps(registry, changedPaths = []) {
 export function createAppPlan(registry, changedPaths = []) {
   const selected = selectAffectedApps(registry, changedPaths);
   const releasable = selected.filter((app) => app.ci.release);
-  const sharedRuntime = selected.filter((app) => app.ci.shared_runtime);
+  const browserTested = selected.filter((app) => app.ci.browser_test);
   return Object.freeze({
     changedPaths: Object.freeze([...changedPaths]),
     selected: Object.freeze(selected),
     apps: Object.freeze({ include: Object.freeze(selected.map(matrixEntry)) }),
-    sharedApps: Object.freeze({ include: Object.freeze(sharedRuntime.map(matrixEntry)) }),
+    browserApps: Object.freeze({ include: Object.freeze(browserTested.map(matrixEntry)) }),
     releaseApps: Object.freeze({ include: Object.freeze(releasable.map(matrixEntry)) }),
     allApps: selected.length === registry.apps.length,
   });

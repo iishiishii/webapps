@@ -127,6 +127,10 @@ assert.ok(appJs.includes("document.getElementById('fileInput')?.focus()"), 'star
 assert.ok(appJs.includes("bindModalButton('startPrivacyButton', this.privacyModal)"), 'start page Privacy header button is wired');
 assert.ok(appJs.includes("bindModalButton('startPrivacyInlineButton', this.privacyModal)"), 'start page Privacy body button is wired');
 assert.ok(appJs.includes("bindModalButton('startCitationsButton', this.citationsModal)"), 'start page Citations button is wired');
+assert.ok(
+  indexHtml.includes(`onclick="document.getElementById('aboutButton').click()"`),
+  'start page About button opens the shared About modal'
+);
 assert.ok(indexHtml.includes('id="moreAppsLink"'), 'main app header More Apps link exists');
 assert.ok(indexHtml.includes('href="../"'), 'More Apps links return to the composite webapps start page');
 assert.ok(!indexHtml.includes('https://neurodesk.org/getting-started/hosted/webapps/'), 'More Apps links do not leave the composite site');

@@ -5,13 +5,14 @@
   "type": "module",
   "description": "Browser-based prostate fiducial marker segmentation.",
   "scripts": {
+    "vendor": "node ../../scripts/vendor-components.mjs",
     "runtime-support": "node ../../scripts/vendor-runtime-support.mjs",
-    "predev": "pnpm runtime-support",
-    "dev": "bash web/run.sh",
-    "prebuild": "pnpm runtime-support && bash web/setup.sh",
+    "predev": "pnpm vendor && pnpm runtime-support",
+    "dev": "node ../../scripts/dev-server.mjs --dir web --port 8080",
+    "prebuild": "pnpm vendor && pnpm runtime-support && node ../../scripts/fetch-app-runtime.mjs --dest web/wasm ort-web:ort.min.js,ort-wasm-simd-threaded.mjs,ort-wasm-simd-threaded.wasm qsm-wasm:qsm_wasm.js,qsm_wasm_bg.wasm",
     "build": "node ../../scripts/build-static.mjs",
     "lint": "node ../../scripts/check-app-js.mjs web",
-    "pretest": "pnpm runtime-support",
+    "pretest": "pnpm vendor && pnpm runtime-support",
     "test": "node ../../scripts/check-app-js.mjs web && node --test test/*.test.mjs"
   },
   "dependencies": {

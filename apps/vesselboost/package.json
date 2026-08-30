@@ -11,7 +11,7 @@
     "vendor": "node ../../scripts/vendor-components.mjs",
     "runtime-support": "node ../../scripts/vendor-runtime-support.mjs",
     "predev": "pnpm vendor && pnpm runtime-support",
-    "dev": "bash web/run.sh",
+    "dev": "node ../../scripts/dev-server.mjs --dir web --port 8080",
     "prebuild": "pnpm vendor && pnpm runtime-support && bash web/setup.sh",
     "build": "node ../../scripts/build-static.mjs",
     "pretest": "pnpm runtime-support",

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { access, readFile, readdir } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { parse } from 'yaml';
+import { parse, stringify } from 'yaml';
 import { loadAppsRegistry, repoRoot } from '../scripts/lib/apps-registry.mjs';
 import { validateAssetManifest } from '../scripts/lib/scientific-assets.mjs';
 
@@ -67,6 +68,31 @@ test('CI app-test matrix covers the complete catalog', async () => {
   assert.equal(workflow.jobs['app-tests'].needs, 'app-plan');
   assert.match(workflow.jobs['app-tests'].if, /has_apps/);
   assert.match(workflow.jobs['app-tests'].strategy.matrix, /fromJSON\(needs\.app-plan\.outputs\.apps\)/);
+});
+
+test('CI browser-e2e matrix covers exactly the apps with runnable browser suites', async () => {
+  const registry = await loadAppsRegistry();
+  for (const app of registry.apps) {
+    assert.equal(typeof app.ci.browser_test, 'boolean', `${app.id} must expose ci.browser_test`);
+    if (!app.ci.browser_test) continue;
+    const packageJson = JSON.parse(
+      await readFile(join(repoRoot, 'apps', app.id, 'package.json'), 'utf8'),
+    );
+    assert.ok(packageJson.scripts?.['test:e2e'], `${app.id} must define test:e2e`);
+  }
+
+  const workflow = parse(await readFile(join(repoRoot, '.github/workflows/ci.yml'), 'utf8'));
+  assert.equal(workflow.jobs['browser-e2e'].needs, 'app-plan');
+  assert.match(workflow.jobs['browser-e2e'].if, /has_browser_apps/);
+  assert.match(workflow.jobs['browser-e2e'].strategy.matrix, /fromJSON\(needs\.app-plan\.outputs\.browser_apps\)/);
+});
+
+test('registry validation rejects a non-boolean ci.browser_test', async () => {
+  const raw = parse(await readFile(join(repoRoot, 'registry', 'apps.yml'), 'utf8'));
+  raw.apps[0].ci.browser_test = 'sometimes';
+  const path = join(await mkdtemp(join(tmpdir(), 'apps-registry-')), 'apps.yml');
+  await writeFile(path, stringify(raw));
+  await assert.rejects(loadAppsRegistry(path), /ci\.browser_test must be a boolean/);
 });
 
 test('release workflow runs each app\'s declared release test script', async () => {

@@ -5,6 +5,7 @@
       "id": "ort-web",
       "version": "1.21.0",
       "target": "ort-web/1.21.0",
+      "download_base": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist",
       "files": [
         {"name":"ort-wasm-simd-threaded.jsep.mjs","source_app":"calmar","source":"wasm/ort-wasm-simd-threaded.jsep.mjs","sha256":"b69c8812bf2d8356dd248fef0abb35e22d1f05f9c593ca34d4b942f35ea93592"},
         {"name":"ort-wasm-simd-threaded.jsep.wasm","source_app":"calmar","source":"wasm/ort-wasm-simd-threaded.jsep.wasm","sha256":"0663b902fb3937883a34375926bdfe3e1c86cd4c99cbc04c06a7cdf46c78bdde"},
@@ -32,6 +33,17 @@
       "target": "nifti-reader/0.8.0",
       "files": [
         {"name":"index.js","source_app":"calmar","source":"nifti-js/index.js","sha256":"10e748285d8867c08f2e72f6a4215c433d353c9961aed8fd75a9571f3b1235a6"}
+      ]
+    }
+  ],
+  "downloads": [
+    {
+      "id": "qsm-wasm",
+      "version": "0.9.2",
+      "download_base": "https://github.com/astewartau/qsmbly/releases/download/v0.9.2",
+      "files": [
+        {"name":"qsm_wasm.js","sha256":"3586d143f1257d1a06304fbb74028cbae51c6a716efea26037a996a1941a6eca"},
+        {"name":"qsm_wasm_bg.wasm","sha256":"64e10fb3e75dad7d9be2af5ca796524d8ca0efc9740e70fd50cb0782960b340b"}
       ]
     }
   ]

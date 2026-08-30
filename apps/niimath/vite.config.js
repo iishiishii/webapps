@@ -1,8 +1,12 @@
-import { defineConfig } from 'vite'
+import { neurodeskViteConfig } from '../../scripts/lib/vite-app-config.mjs'
 
-export default defineConfig({
+// The explicit relative base keeps the standalone release zip hostable at any
+// path (its legacy home was niivue.github.io/niivue-niimath); the composite
+// serves it under /niimath/ and relative URLs resolve there too.
+export default neurodeskViteConfig({
+  appId: 'niimath',
+  base: './',
   root: '.',
-  base: process.env.WEBAPPS_BASE_PATH || './',
   server: {
     open: 'index.html'
   },
@@ -12,9 +16,6 @@ export default defineConfig({
         format: 'es'
       }
     }
-  },
-  worker: {
-    format: 'es'
   },
   // exclude @niivue/niimath from optimization
   optimizeDeps: {

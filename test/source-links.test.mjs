@@ -2,29 +2,30 @@ import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { extname, join, relative } from 'node:path';
 import test from 'node:test';
-import { repoRoot } from '../scripts/lib/apps-registry.mjs';
+import { loadAppsRegistry, repoRoot } from '../scripts/lib/apps-registry.mjs';
 
 const MONOREPO = 'https://github.com/neurodesk/webapps';
 
 // Historical repositories from which the browser apps were imported. These
 // are provenance, not the current home of the app source. User-facing source,
-// issue, and release links must point at this monorepo instead.
-const LEGACY_APP_REPOSITORIES = new Map(Object.entries({
-  'neurodesk/musclemap-webapp': 'musclemap',
-  'neurodesk/vesselboost-webapp': 'vesselboost',
-  'neurodesk/spinalcordtoolbox-webapp': 'spinalcordtoolbox',
+// issue, and release links must point at this monorepo instead. The registry's
+// `source` field is the canonical record; only repositories that were renamed
+// before the registry pinned them need listing here by hand.
+const RENAMED_LEGACY_REPOSITORIES = {
   'neurodesk/lesion-network-mapping-webapp': 'calmar',
-  'neurodesk/calmar-webapp': 'calmar',
-  'astewartau/qsmbly': 'qsmbly',
-  'astewartau/prostate': 'seedseg',
   'astewartau/seedseg': 'seedseg',
-  'astewartau/dicompare-web': 'dicompare',
-  'niivue/deface': 'deface',
-  'thomshaw92/easy-mp2rage-t1-map': 'easy-mp2rage',
-  'niivue/niivue-niimath': 'niimath',
-  'thomshaw92/dicom2vid': 'dicom2vid',
-  'neurolabusc/browserqc': 'browserqc',
-}));
+};
+
+async function legacyAppRepositories() {
+  const registry = await loadAppsRegistry();
+  const repositories = new Map(Object.entries(RENAMED_LEGACY_REPOSITORIES));
+  for (const app of registry.apps) {
+    const repository = app.source.split('@')[0].toLowerCase();
+    if (repository === 'neurodesk/webapps') continue;
+    repositories.set(repository, app.id);
+  }
+  return repositories;
+}
 
 const SOURCE_EXTENSIONS = new Set(['.cff', '.css', '.html', '.js', '.md', '.toml', '.ts', '.tsx']);
 const SKIP_DIRECTORIES = new Set([
@@ -44,6 +45,7 @@ async function browserSourceFiles(directory) {
 }
 
 test('app-facing GitHub links use the monorepo as the current source home', async () => {
+  const legacyRepositories = await legacyAppRepositories();
   const stale = [];
   const repositoryUrls = [
     /https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)/gi,
@@ -55,7 +57,7 @@ test('app-facing GitHub links use the monorepo as the current source home', asyn
     for (const repositoryUrl of repositoryUrls) {
       for (const match of source.matchAll(repositoryUrl)) {
         const repository = `${match[1]}/${match[2]}`.toLowerCase();
-        const app = LEGACY_APP_REPOSITORIES.get(repository);
+        const app = legacyRepositories.get(repository);
         if (!app) continue;
         stale.push({
           file: relative(repoRoot, path),

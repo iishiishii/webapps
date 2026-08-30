@@ -1,15 +1,12 @@
-import { defineConfig } from 'vite'
+import { neurodeskViteConfig } from '../../scripts/lib/vite-app-config.mjs'
 
-// Served from the composite Neurodesk site, so bundled assets resolve under the
-// /browserqc/ subpath. The environment override keeps preview builds portable.
-export default defineConfig({
-  base: process.env.WEBAPPS_BASE_PATH || '/browserqc/',
+// Base path, worker format, COOP/COEP dev headers and the production _headers
+// file come from the shared helper (registry path: /browserqc/).
+export default neurodeskViteConfig({
+  appId: 'browserqc',
   server: {
     open: '/index.html',
     port: 8091,
-  },
-  worker: {
-    format: 'es',
   },
   build: {
     target: 'esnext',
