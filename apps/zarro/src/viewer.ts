@@ -5148,7 +5148,6 @@ async function loadOmezarrVolume(
     focusBounds,
   )
   syncActiveLodIndicator(chunkPlan)
-  restoreView(view)
   syncCrosshairAppearance()
   nv.drawScene()
   syncNvSlideView()
@@ -5207,7 +5206,6 @@ async function loadMosaicVolume(
     focusBounds,
   )
   syncActiveLodIndicator(chunkPlan)
-  restoreView(view)
   syncCrosshairAppearance()
   nv.drawScene()
   syncNvSlideView()
@@ -5346,6 +5344,7 @@ async function performReloadVolume(
       await nv.loadVolumes([createStreamingVolume(activeSource)])
       syncActiveLodIndicator(chunkPlan)
     }
+    restoreView(view)
     if (
       targetLayerId &&
       chunkedVolume &&
@@ -5631,7 +5630,6 @@ async function main(): Promise<void> {
         calMax: sharedWindow.max,
       })
     }
-    restoreView(initialSharedView)
     applyLayout()
     const focusMoved = syncFocusFromPan()
     scheduleAdaptiveLod(focusMoved)
