@@ -1468,6 +1468,59 @@ test("generic uint16 share contrast is replaced from streamed signal", async ({ 
       .screenshot();
     return canvasAfterAutoContrast.equals(canvasBeforeAutoContrast);
   }).toBe(false);
+
+  const stainSwitchCanvas = page.locator('[data-plane="axial"] canvas');
+  const stainSwitchBox = await stainSwitchCanvas.boundingBox();
+  expect(stainSwitchBox).not.toBeNull();
+  await page.mouse.move(
+    stainSwitchBox.x + stainSwitchBox.width / 2,
+    stainSwitchBox.y + stainSwitchBox.height / 2,
+  );
+  await page.mouse.wheel(0, -700);
+  await page.mouse.move(
+    stainSwitchBox.x + stainSwitchBox.width * 0.45,
+    stainSwitchBox.y + stainSwitchBox.height * 0.55,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    stainSwitchBox.x + stainSwitchBox.width * 0.55,
+    stainSwitchBox.y + stainSwitchBox.height * 0.45,
+    { steps: 5 },
+  );
+  await page.mouse.up();
+  await expect.poll(async () => (await niftiEstimate(page)).shape)
+    .not.toEqual([32, 32, 32]);
+  const framedExport = await niftiEstimate(page);
+  const paneFraming = await page.locator('.nvslide-pane').evaluateAll(
+    (panes) => panes.map((pane) => pane.dataset.framing),
+  );
+  expect(paneFraming.every(Boolean)).toBe(true);
+
+  await page.getByRole("button", { name: "New stain layer" }).click();
+  await page.getByLabel("Stain name").fill("Second");
+  await page.getByLabel("OME-Zarr store URL 1").fill(
+    "http://localhost:4173/test-auto-window/second",
+  );
+  await page.getByRole("button", { name: "Load volume" }).click();
+  await expect.poll(async () => (
+    (await page.locator("#nv-canvas").getAttribute("data-loaded-stain-layers"))
+      ?.split(",").filter(Boolean).length ?? 0
+  ), { timeout: 30_000 }).toBe(2);
+  await expect.poll(async () => (await niftiEstimate(page)).shape)
+    .toEqual(framedExport.shape);
+  await expect.poll(async () => page.locator('.nvslide-pane').evaluateAll(
+    (panes) => panes.map((pane) => pane.dataset.framing),
+  )).toEqual(paneFraming);
+  await expect(page.locator("#niftiEstimate")).toContainText("Second");
+
+  const firstStain = page.locator(".stain-layer-select").first();
+  await firstStain.click();
+  await expect(firstStain).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(async () => (await niftiEstimate(page)).shape)
+    .toEqual(framedExport.shape);
+  await expect.poll(async () => page.locator('.nvslide-pane').evaluateAll(
+    (panes) => panes.map((pane) => pane.dataset.framing),
+  )).toEqual(paneFraming);
 });
 
 test("zoom control represents OME-Zarr levels directly", async ({ page }) => {

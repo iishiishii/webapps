@@ -3,7 +3,6 @@ import {
   SlideRenderer,
   type ChunkedVolumeSource,
   type NVSlideScreen,
-  type NVSlideViewport,
 } from '@niivue/niivue'
 import './nvslide_view.css'
 import {
@@ -23,6 +22,12 @@ import {
   type NvSlideMeasurementSegment,
   type NvSlidePoint,
 } from './nvslide_measurement.ts'
+import {
+  captureNvSlideFraming,
+  projectNvSlideFraming,
+  type NvSlideFraming,
+  type NvSlideFramingSpace,
+} from './nvslide_viewport.ts'
 
 export type Fraction3 = readonly [number, number, number]
 
@@ -123,6 +128,7 @@ interface PaneRuntime {
   source: VolumePlaneSource | null
   slide: NVSlide | null
   identity: PaneIdentity | null
+  retainedFraming: NvSlideFraming | null
   frame: number
   generation: number
   pointer: PointerGesture | null
@@ -165,6 +171,15 @@ const screenFor = (canvas: HTMLCanvasElement): NVSlideScreen => {
     devicePixelRatio: window.devicePixelRatio || 1,
   }
 }
+
+const framingSpaceFor = (
+  slide: NVSlide,
+  screen: NVSlideScreen,
+): NvSlideFramingSpace => ({
+  manifestWidth: slide.manifest.width,
+  manifestHeight: slide.manifest.height,
+  fitScale: slide.fitScaleFor(screen),
+})
 
 const normalIndexFor = (
   definition: PlaneDefinition,
@@ -243,6 +258,7 @@ export const mountNvSlideView = (
         source: null,
         slide: null,
         identity: null,
+        retainedFraming: null,
         frame: 0,
         generation: 0,
         pointer: null,
@@ -353,14 +369,20 @@ export const mountNvSlideView = (
     crosshair: Fraction3,
   ): void => {
     if (!pane.slide) return
-    pane.slide.setViewport({
-      ...pane.slide.viewport,
+    centerSlideOnCrosshair(pane.slide, pane.definition, crosshair)
+  }
+
+  const centerSlideOnCrosshair = (
+    slide: NVSlide,
+    definition: PlaneDefinition,
+    crosshair: Fraction3,
+  ): void => {
+    slide.setViewport({
+      ...slide.viewport,
       centerX:
-        clampFraction(crosshair[pane.definition.uAxis]) *
-        pane.slide.manifest.width,
+        clampFraction(crosshair[definition.uAxis]) * slide.manifest.width,
       centerY:
-        clampFraction(crosshair[pane.definition.vAxis]) *
-        pane.slide.manifest.height,
+        clampFraction(crosshair[definition.vAxis]) * slide.manifest.height,
     })
   }
 
@@ -526,6 +548,19 @@ export const mountNvSlideView = (
     updateMeasurements(pane)
     const level = pane.slide.selectLevel()
     pane.element.dataset.level = level ? String(level.index) : ''
+    const framing = captureNvSlideFraming(
+      pane.slide.viewport,
+      framingSpaceFor(pane.slide, screen),
+    )
+    if (framing) {
+      pane.element.dataset.framing = [
+        framing.centerU,
+        framing.centerV,
+        framing.zoomOverFit,
+      ].map((value) => value.toFixed(9)).join(',')
+    } else {
+      delete pane.element.dataset.framing
+    }
     const pendingCount = pane.slide.pendingCount
     pane.element.dataset.pending = String(pendingCount)
     pane.element.dataset.cacheBytes = String(pane.slide.cacheBytes)
@@ -560,7 +595,19 @@ export const mountNvSlideView = (
     return true
   }
 
-  const disposePane = (pane: PaneRuntime, destroyRenderer: boolean): void => {
+  const checkpointPaneFraming = (pane: PaneRuntime): void => {
+    if (!pane.slide) return
+    const framing = captureNvSlideFraming(
+      pane.slide.viewport,
+      framingSpaceFor(pane.slide, screenFor(pane.canvas)),
+    )
+    if (framing) pane.retainedFraming = framing
+  }
+
+  const releasePaneResources = (
+    pane: PaneRuntime,
+    destroyRenderer: boolean,
+  ): void => {
     if (pane.frame !== 0) cancelAnimationFrame(pane.frame)
     pane.frame = 0
     if (pane.slide && pane.slideChange) {
@@ -578,12 +625,23 @@ export const mountNvSlideView = (
       pane.renderer = null
       pane.gl = null
     }
+  }
+
+  const disposePane = (
+    pane: PaneRuntime,
+    destroyRenderer: boolean,
+    resetFraming: boolean,
+  ): void => {
+    if (resetFraming) pane.retainedFraming = null
+    else checkpointPaneFraming(pane)
+    releasePaneResources(pane, destroyRenderer)
     pane.crosshair.hidden = true
     pane.measurements.replaceChildren()
     pane.scaleBar.hidden = true
     pane.loading.hidden = true
     pane.loading.value = ''
     delete pane.element.dataset.level
+    delete pane.element.dataset.framing
     pane.element.dataset.pending = '0'
     pane.element.dataset.cacheBytes = '0'
   }
@@ -593,20 +651,8 @@ export const mountNvSlideView = (
     ready: Extract<NvSlideViewState, { kind: 'ready' }>,
     identity: PaneIdentity,
   ): void => {
-    const previousViewport: NVSlideViewport | null =
-      pane.identity?.source === identity.source && pane.slide
-        ? { ...pane.slide.viewport }
-        : null
-    if (pane.slide && pane.slideChange) {
-      pane.slide.removeEventListener('change', pane.slideChange)
-    }
-    pane.source?.dispose()
-    pane.slide?.dispose()
-    pane.renderer?.clearTextures()
-    pane.source = null
-    pane.slide = null
-    pane.slideChange = null
-    pane.identity = null
+    checkpointPaneFraming(pane)
+    releasePaneResources(pane, false)
     pane.generation += 1
     if (!ensureRenderer(pane)) return
 
@@ -617,45 +663,57 @@ export const mountNvSlideView = (
       index: identity.normalIndex,
       window: ready.window,
     })
-    pane.source = source
-    const slide = NVSlide.fromSource(source, {
-      maxCacheBytes: pane.cacheBytes,
-      maxScale: 64,
-      targetScreenPixelsPerTilePixel: 0.75,
-      backgroundColor: [0.01, 0.015, 0.015, 1],
-      placeholderColor: [0.03, 0.04, 0.04, 1],
-    })
-    const generation = pane.generation
-    const slideChange = (): void => {
-      if (pane.generation !== generation) return
-      requestDraw(pane)
-      if (pane.definition.plane === activePlane) notifyActivePaneChange()
-    }
-    slide.addEventListener('change', slideChange)
-    pane.slide = slide
-    pane.slideChange = slideChange
-    pane.identity = identity
-    pane.status.value = ''
-    pane.element.dataset.slice = String(identity.normalIndex)
-    pane.element.dataset.window = `${identity.windowMin}:${identity.windowMax}`
-
-    const screen = screenFor(pane.canvas)
-    if (previousViewport) {
-      slide.setViewport(previousViewport)
-      slide.clampViewport(screen)
-    } else {
-      slide.fitToScreen(screen)
-      slide.setViewport({
-        ...slide.viewport,
-        scale: Math.min(
-          slide.maxScale,
-          slide.fitScaleFor(screen) * Math.max(0.01, ready.zoom),
-        ),
+    let slide: NVSlide | null = null
+    try {
+      slide = NVSlide.fromSource(source, {
+        maxCacheBytes: pane.cacheBytes,
+        maxScale: 64,
+        targetScreenPixelsPerTilePixel: 0.75,
+        backgroundColor: [0.01, 0.015, 0.015, 1],
+        placeholderColor: [0.03, 0.04, 0.04, 1],
       })
-      centerPaneOnCrosshair(pane, ready.crosshair)
+      const screen = screenFor(pane.canvas)
+      const restoredViewport = pane.retainedFraming
+        ? projectNvSlideFraming(
+            pane.retainedFraming,
+            framingSpaceFor(slide, screen),
+          )
+        : null
+      if (restoredViewport) {
+        slide.setViewport(restoredViewport)
+      } else {
+        slide.fitToScreen(screen)
+        slide.setViewport({
+          ...slide.viewport,
+          scale: Math.min(
+            slide.maxScale,
+            slide.fitScaleFor(screen) * Math.max(0.01, ready.zoom),
+          ),
+        })
+        centerSlideOnCrosshair(slide, pane.definition, ready.crosshair)
+      }
       slide.clampViewport(screen)
+      const generation = pane.generation
+      const slideChange = (): void => {
+        if (pane.generation !== generation) return
+        requestDraw(pane)
+        if (pane.definition.plane === activePlane) notifyActivePaneChange()
+      }
+      slide.addEventListener('change', slideChange)
+      pane.source = source
+      pane.slide = slide
+      pane.slideChange = slideChange
+      pane.identity = identity
+      pane.retainedFraming = null
+      pane.status.value = ''
+      pane.element.dataset.slice = String(identity.normalIndex)
+      pane.element.dataset.window = `${identity.windowMin}:${identity.windowMax}`
+      requestDraw(pane)
+    } catch (error) {
+      slide?.dispose()
+      source.dispose()
+      throw error
     }
-    requestDraw(pane)
   }
 
   const updateReady = (
@@ -668,7 +726,7 @@ export const mountNvSlideView = (
     const base = ready.source.levels[0]
     if (!base) {
       for (const pane of panes) {
-        disposePane(pane, false)
+        disposePane(pane, false, false)
         pane.status.value = 'This volume has no pyramid levels.'
       }
       return
@@ -715,7 +773,7 @@ export const mountNvSlideView = (
         updateMeasurements(pane)
         requestDraw(pane)
       } catch (error) {
-        disposePane(pane, false)
+        disposePane(pane, false, false)
         pane.status.value = error instanceof Error ? error.message : String(error)
       }
     }
@@ -730,7 +788,7 @@ export const mountNvSlideView = (
       root.setAttribute('aria-hidden', 'true')
       delete root.dataset.interaction
       for (const pane of panes) {
-        disposePane(pane, true)
+        disposePane(pane, true, true)
         pane.status.value = ''
       }
       notifyActivePaneChange()
@@ -741,7 +799,7 @@ export const mountNvSlideView = (
       root.setAttribute('aria-hidden', 'false')
       delete root.dataset.interaction
       for (const pane of panes) {
-        disposePane(pane, true)
+        disposePane(pane, true, false)
         pane.status.value = next.reason
       }
       notifyActivePaneChange()
@@ -955,7 +1013,7 @@ export const mountNvSlideView = (
       if (disposed) return
       disposed = true
       resizeObserver.disconnect()
-      for (const pane of panes) disposePane(pane, true)
+      for (const pane of panes) disposePane(pane, true, true)
       root.hidden = true
       root.setAttribute('aria-hidden', 'true')
     },
