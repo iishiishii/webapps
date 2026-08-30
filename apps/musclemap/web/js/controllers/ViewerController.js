@@ -1,11 +1,4 @@
-/**
- * ViewerController
- *
- * Manages NiiVue visualization with support for base volume and segmentation overlays.
- * Adapted for MuscleMap's discrete 100-class colormap.
- */
-
-import { createUint8PreviewNiftiFile } from '../modules/file-io/NiftiUtils.js?v=1.2.35';
+import { createUint8PreviewNiftiFile } from '../modules/file-io/NiftiUtils.js';
 
 const LARGE_VOLUME_DISPLAY_LIMIT_BYTES = 256 * 1024 ** 2;
 const COMPRESSED_NIFTI_DISPLAY_LIMIT_BYTES = 100 * 1024 ** 2;

@@ -12,6 +12,8 @@ const html = fs.readFileSync(path.join(ROOT, 'web/index.html'), 'utf8');
 const css = fs.readFileSync(path.join(ROOT, 'web/css/styles.css'), 'utf8');
 const serviceWorker = fs.readFileSync(path.join(ROOT, 'web/coi-serviceworker.js'), 'utf8');
 const runScript = fs.readFileSync(path.join(ROOT, 'web/run.sh'), 'utf8');
+const devServer = fs.readFileSync(path.join(ROOT, '../../scripts/dev-server.mjs'), 'utf8');
+const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 
 // Title + h1 reflect the CALMaR identity, not SCT.
 assert.match(html, /<title>[^<]*CALMaR\s*\|\s*Co-designed Automated Lesion Mapping and Reporting[^<]*<\/title>/,
@@ -144,6 +146,12 @@ assert.match(html, /Process stroke lesion maps locally in your browser\./,
   'start page must explain that CALMaR processes stroke lesion maps locally');
 assert.match(html, /Patient images, masks, voxel values, screenshots, and generated outputs stay on this computer\./,
   'start page must state that patient-derived data stays local');
+assert.match(html, /Imaging data is processed locally in your browser and is not uploaded\./,
+  'footer must carry the canonical shared privacy sentence');
+assert.match(html, /<a href="\.\.\/"[^>]*>More Neurodesk webapps<\/a>/,
+  'footer must link back to the composite More Neurodesk webapps page');
+assert.match(html, /class="start-links"[\s\S]{0,400}title="About"[^>]*onclick="document\.getElementById\('aboutButton'\)\.click\(\)"/,
+  'start header must open the same About modal as the workspace header');
 assert.match(html, /How It Works[\s\S]*1\. Load T1 data[\s\S]*2\. Review the mask[\s\S]*3\. Map and report/,
   'start page must include a three-step How It Works explanation');
 assert.match(html, /Atlas and model assets may be downloaded when a workflow needs them/,
@@ -353,14 +361,18 @@ assert.match(serviceWorker, /if\s*\(!response\)\s*return\s+fetch\(request\)/,
   'service worker must let uncached localhost download GETs reach the dev server');
 assert.doesNotMatch(serviceWorker, /window\.crossOriginIsolated\s*!==\s*false\s*\|\|\s*!coi\.shouldRegister\(\)/,
   'service worker registration must not be skipped when server COOP/COEP already makes the page isolated');
-assert.match(runScript, /X-LNM-Stage-Only/,
+assert.match(runScript, /dev-server\.mjs/,
+  'web/run.sh must delegate to the shared scripts/dev-server.mjs');
+assert.match(runScript, /--staging-route \/__lnm_downloads\//,
+  'web/run.sh must enable the staged mask download route on the shared dev server');
+assert.match(packageJson.scripts.dev, /--staging-route \/__lnm_downloads\//,
+  'the dev script must enable the staged mask download route on the shared dev server');
+assert.match(devServer, /x-lnm-stage-only/i,
   'local dev server must support staged HTTP mask downloads without direct-writing to ~/Downloads');
-assert.match(runScript, /Content-Disposition/,
+assert.match(devServer, /Content-Disposition/,
   'local dev server must serve staged mask downloads as attachments');
-assert.match(runScript, /os\.replace\(tmp_path,\s*output_path\)/,
+assert.match(devServer, /await rename\(temporary, savedPath\)/,
   'local dev server must keep atomic direct-save support for non-staged local downloads');
-assert.match(runScript, /ThreadingHTTPServer/,
-  'local dev server must handle download route requests without blocking other app requests');
 
 // NiiVue canvas must remain (we reuse it for structural + lesion overlay).
 assert.match(html, /id=["']gl1["']/, '#gl1 NiiVue canvas must be retained');

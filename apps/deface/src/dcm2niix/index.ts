@@ -72,14 +72,37 @@ export async function runDcm2niix(
 
   const dcm2niix = new Dcm2niix()
   try {
-    await dcm2niix.init()
-    const result = (await dcm2niix.input(files).run()) as File[]
+    // Bound init + run as one operation. @niivue/dcm2niix's init() only settles on a
+    // {type:'ready'} message, so a failed WASM fetch/instantiate leaves it pending
+    // forever; and a worker crash during run() never settles run() (onerror stays
+    // bound to the settled init()). Either way the caller's queue would wedge — on
+    // expiry we reject and the finally terminates the worker (init() creates it
+    // synchronously, so `dcm2niix.worker` is set even if init never resolves).
+    const result = (await withTimeout(
+      (async () => {
+        await dcm2niix.init()
+        return dcm2niix.input(files).run() as Promise<File[]>
+      })(),
+      RUN_TIMEOUT_MS,
+      'dcm2niix',
+    )) as File[]
     return niftiOnly
       ? result.filter((f) => /\.nii(\.gz)?$/i.test(f.name))
       : result
   } finally {
     dcm2niix.worker?.terminate()
   }
+}
+
+const RUN_TIMEOUT_MS = 120_000
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms} ms`)), ms)
+    p.then(
+      (v) => { clearTimeout(timer); resolve(v) },
+      (e) => { clearTimeout(timer); reject(e) },
+    )
+  })
 }
 
 /**

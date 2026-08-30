@@ -57,11 +57,14 @@ test('an all-zero mask hides the overlay instead of throwing', () => {
   assert.deepEqual([...out], [MASKED_OUT, MASKED_OUT]);
 });
 
-test('curvature is recognised by its FreeSurfer name', () => {
-  for (const name of ['lh.curv', 'rh.curv', 'LH.CURV', 'lh.curv.gii', 'rh.curvature']) {
+test('curvature is recognised in FreeSurfer and BIDS-style names', () => {
+  for (const name of [
+    'lh.curv', 'rh.curv', 'LH.CURV', 'lh.curv.gii', 'rh.curvature', 'curv',
+    'sub-01_hemi-L_curvature.shape.gii'
+  ]) {
     assert.ok(isCurvatureName(name), `${name} should be treated as anatomy`);
   }
-  for (const name of ['lh.thickness', 'lh.polarangle.mgz', 'curv', 'lh.sulc', '']) {
+  for (const name of ['lh.thickness', 'lh.polarangle.mgz', 'curvilinear.shape.gii', 'lh.sulc', '']) {
     assert.ok(!isCurvatureName(name), `${name} should be maskable data`);
   }
   assert.ok(!isCurvatureName(undefined));

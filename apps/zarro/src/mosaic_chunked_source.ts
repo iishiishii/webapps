@@ -14,7 +14,7 @@ export interface MosaicChunkedLevel {
 interface MosaicChunkedSourceOptions<Level extends MosaicChunkedLevel> {
   datatypeCode: number
   levels: readonly Level[]
-  signal: () => AbortSignal
+  signal: (request?: AbortSignal) => AbortSignal
   concurrency: number
   fetchRegion: (
     level: Level,
@@ -40,7 +40,7 @@ export function createMosaicChunkedVolumeSource<
       spacing: level.spacing,
     })),
     fetchChunk: (request) => {
-      const signal = options.signal()
+      const signal = options.signal(request.signal)
       return reads.run(signal, async () => {
         const level = options.levels[request.levelIndex]
         if (!level) {

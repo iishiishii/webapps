@@ -5,9 +5,11 @@ import { loadAppsRegistry, repoRoot } from './lib/apps-registry.mjs';
 import { injectCompositeTheme } from './lib/composite-theme.mjs';
 import { renderLandingPage } from './lib/landing-page.mjs';
 import { assembleRuntimeAssetStore } from './lib/runtime-assets.mjs';
+import { headersFile } from './lib/vite-app-config.mjs';
 
 const registry = await loadAppsRegistry();
 const siteDist = join(repoRoot, 'dist');
+const siteOrigin = `https://${registry.site.domain}`;
 await rm(siteDist, { recursive: true, force: true });
 await mkdir(siteDist, { recursive: true });
 
@@ -25,6 +27,7 @@ for (const app of registry.apps) {
     description: app.description,
     version: appPackage.version,
     measurementId: registry.site.analytics.measurement_id,
+    url: `${siteOrigin}/${app.path}/`,
   }));
 }
 
@@ -40,5 +43,5 @@ await cp(join(repoRoot, 'site', 'app-shell.js'), join(siteDist, 'app-shell.js'))
 await cp(join(repoRoot, 'packages', 'analytics', 'src', 'index.js'), join(siteDist, 'analytics.js'));
 await cp(join(repoRoot, 'site', 'analytics.json'), join(siteDist, 'analytics.json'));
 await writeFile(join(siteDist, '.nojekyll'), '');
-await writeFile(join(siteDist, '_headers'), `/*\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: credentialless\n  X-Content-Type-Options: nosniff\n`);
+await writeFile(join(siteDist, '_headers'), headersFile);
 console.log(`Assembled ${registry.apps.length} apps at ${siteDist}`);

@@ -182,7 +182,8 @@ which is why the algorithm suite is fast and deterministic. Only `main.js` and
   window must go through `commitOverlay`, not `commitLayer`, or the old clamp is
   what renders.
 - **Exempt overlays are restacked to the bottom, and that is what makes the mask
-  useful.** `restackLayers` rebuilds `mesh.layers` as exempt → masked → ROI. A
+  useful.** `restackLayers` orders exempt overlays before masked overlays, then
+  `meshAdapter.replaceLayerStack` puts those layers below the ROI layer. A
   curvature overlay loaded *after* a retinotopy map would otherwise sit over the
   holes the mask opens, and the feature would look broken rather than absent.
   `entry.overlays` is reordered to match so the panel list reads in render order.
@@ -203,6 +204,8 @@ which is why the algorithm suite is fast and deterministic. Only `main.js` and
   plausible doing it. `io/freesurferCurv.js` parses those files honestly; the
   e2e test asserts the vertex count, which is what catches a regression here.
   The inversion is harmless for curvature itself, which is only ever shading.
+- **An all-zero mask is valid.** It hides every non-exempt overlay. Keep it in
+  `state.masks` so **Clear** can restore the overlays.
 - **The polar-angle wheel runs counter-clockwise from the right horizontal
   meridian, and `paintLegend`'s `atan2(-y, x)` is what makes it.** Canvas y points
   down, so dropping the minus mirrors the wheel — which does not look broken, it
@@ -216,9 +219,10 @@ which is why the algorithm suite is fast and deterministic. Only `main.js` and
   `Vorlagen/colorbars/color_circle_pol_python_notext.svg`, the figure this was
   built from, is mirrored relative to this — a `ColorbarBase`-on-polar-axes
   quirk. Matching that file would be the bug.
-- **The legend's colours come from `nv.colormap(key)`, never from
-  `EXTRA_COLORMAPS`.** That LUT is the 256 entries the shader samples, so a
-  legend built from it cannot describe one scale while the surface renders
+- **The legend's colours come from `colormaps.sampledColormap`, never from
+  `EXTRA_COLORMAPS`.** The wrapper returns the 256 entries that NiiVue gives the
+  shader and keeps the NiiVue call inside `niivue/`. A legend built from it
+  cannot describe one scale while the surface renders
   another — and NiiVue's own maps get a legend without being re-implemented.
   `colorLegend.js` therefore takes the LUT as an argument and stays pure, which
   is what lets the wheel geometry be unit-tested at all.

@@ -24,10 +24,13 @@ complete dataset.
   while the slider is still moving; pan retains coarser context automatically.
 - The Zarr level menu can keep zoom-adaptive detail on Auto or lock the visible
   field of view to an explicit pyramid level.
-- Multiplanar, single-slice, and cropped 3D rendering layouts are available.
+- The default NVSlide axial-focus layout streams independent axial, sagittal,
+  and coronal panes with synchronized crosshairs. Multiplanar, single-slice,
+  and cropped 3D NiiVue layouts remain available.
 - Window level/width and a synchronized dual-thumb visible min/max control,
-  colour maps, physical scale bars, crosshairs, and distance measurements are
-  handled in the browser.
+  colour maps, pane-specific physical scale bars, crosshairs, and distance
+  measurements are handled in the browser. NVSlide measurements use the same
+  world-space model as NiiVue measurements.
 - The active stain's current physical field of view can be exported as NIfTI
   at either the displayed Zarr level or any other pyramid level. ZARRo shows
   the mapped voxel dimensions, spacing, approximate complete file size, and

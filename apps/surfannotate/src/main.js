@@ -3,7 +3,9 @@ import './styles.css';
 
 import { mountImagingWorkspace } from '@neurodesk/webapp-components/core/mount-imaging-workspace';
 import { Niivue } from '@niivue/niivue';
-import { registerExtraColormaps, colormapWindow } from './niivue/colormaps.js';
+import {
+  registerExtraColormaps, colormapWindow, sampledColormap
+} from './niivue/colormaps.js';
 import {
   legendKind, legendTicks, paintLegend, rangeDecimals
 } from './niivue/colorLegend.js';
@@ -25,7 +27,8 @@ import { FILL_ERRORS, maskToIndices } from './surface/fill.js';
 import {
   loadMeshFromFile, loadOverlay, getGeometry, pickWorldMm, resolveVertex,
   attachLabelLayer, commitLayer, setOverlayDisplay, makeLabelLut, attachValueLayer,
-  readLayerValues, renderMatrices, vertexNormals
+  readLayerValues, renderMatrices, vertexNormals, overlayLayerState, setOverlayWindow,
+  setOverlayValues, replaceLayerStack, updateLabelLayerLut
 } from './niivue/meshAdapter.js';
 import {
   projectMarkers, markerSprite, surfaceOrientation, MARKER_COLORS,
@@ -799,8 +802,7 @@ async function init() {
       setStatus('Colour range needs a maximum greater than the minimum.');
       return;
     }
-    layer.cal_min = low;
-    layer.cal_max = high;
+    setOverlayWindow(layer, low, high);
     commitOverlay();
     renderColorLegend();
     setStatus(`Colour range set to ${low} – ${high}.`);
@@ -810,8 +812,7 @@ async function init() {
   ui.overlayRangeReset.addEventListener('click', () => {
     const layer = state.overlayLayer;
     if (!layer || !state.overlayAutoRange) return;
-    layer.cal_min = state.overlayAutoRange.low;
-    layer.cal_max = state.overlayAutoRange.high;
+    setOverlayWindow(layer, state.overlayAutoRange.low, state.overlayAutoRange.high);
     showOverlayRange(layer);
     commitOverlay();
     renderColorLegend();
@@ -1169,17 +1170,18 @@ async function addOverlay(file) {
         { ...display, name: file.name })
       : await loadOverlay(state.nv, entry.mesh, file, display);
 
+    const initialLayerState = overlayLayerState(layer);
     const overlay = {
       id: state.nextId++,
       name: file.name,
       layer,
       visible: true,
       opacity: Number(ui.overlayOpacity.value),
-      autoRange: { low: layer.cal_min, high: layer.cal_max },
+      autoRange: initialLayerState.range,
       // The mask is written into layer.values, so the originals have to survive
       // somewhere — this is the only copy of what the file actually said.
-      baseValues: layer.values,
-      baseTransparentBelowCalMin: layer.isTransparentBelowCalMin,
+      baseValues: initialLayerState.values,
+      baseTransparentBelowCalMin: initialLayerState.transparentBelowCalMin,
       maskedBuffer: null,
       // Curvature is the anatomy the mask is meant to reveal, not data to be
       // masked. A default, not a rule: a curvature file under another name is
@@ -1200,10 +1202,11 @@ async function addOverlay(file) {
     // Before the status line, so an overlay loaded while one of these maps is
     // already selected gets the same window, and the message reports it.
     const snapped = applyColormapWindow();
+    const displayedRange = overlayLayerState(layer).range;
     setStatus(snapped
       ? `Overlay ${file.name} loaded. ${snapped.note}`
       : `Overlay ${file.name} loaded — display window ` +
-        `${layer.cal_min.toFixed(3)} to ${layer.cal_max.toFixed(3)}.`
+        `${displayedRange.low.toFixed(3)} to ${displayedRange.high.toFixed(3)}.`
     );
     repaint();
   } catch (error) {
@@ -1240,11 +1243,6 @@ async function loadMask(file) {
 
     const mask = toBinaryMask(values);
     const kept = maskedInCount(mask);
-    if (!kept) {
-      setStatus(`${file.name} marks no vertices at all — every overlay would vanish.`);
-      return;
-    }
-
     state.masks.set(entry.topologyKey, { name: file.name, mask });
     applyMaskToTopology(entry.topologyKey);
     syncMaskControls();
@@ -1330,10 +1328,7 @@ function removeOverlay(id) {
   const position = entry.overlays.findIndex((overlay) => overlay.id === id);
   if (position < 0) return;
   const [overlay] = entry.overlays.splice(position, 1);
-
-  const layerIndex = entry.mesh.layers.indexOf(overlay.layer);
-  if (layerIndex >= 0) entry.mesh.layers.splice(layerIndex, 1);
-  reattachRoiLayer();
+  restackLayers(entry);
 
   if (entry.activeOverlayId === id) {
     const next = entry.overlays[position] || entry.overlays[position - 1];
@@ -1359,8 +1354,9 @@ function syncOverlayControls() {
 
   ui.overlaySelectedHint.hidden = !overlay;
   if (overlay) {
+    const layerState = overlayLayerState(overlay.layer);
     ui.overlaySelectedHint.textContent = `Editing ${overlay.name}.`;
-    ui.overlayColormap.value = overlay.layer.colormap || 'gray';
+    ui.overlayColormap.value = layerState.colormap;
     ui.overlayOpacity.value = String(overlay.opacity);
     ui.overlayIgnoreMask.checked = overlay.ignoreMask;
     showOverlayRange(overlay.layer);
@@ -1386,16 +1382,16 @@ function syncOverlayControls() {
 function applyColormapWindow() {
   const overlay = activeOverlay();
   const layer = state.overlayLayer;
-  if (!layer?.values) return null;
+  if (!overlay || !layer) return null;
   // The overlay's own values, not the layer's: under a mask those are mostly
   // -Infinity, and the window should describe the data, not the visible remnant
   // of it. It is also what makes the window survive loading a mask.
-  const values = overlay?.baseValues || layer.values;
-  const snapped = colormapWindow(ui.overlayColormap.value, values, state.overlayAutoRange);
+  const snapped = colormapWindow(
+    ui.overlayColormap.value, overlay.baseValues, state.overlayAutoRange
+  );
   if (!snapped) return null;
 
-  layer.cal_min = snapped.low;
-  layer.cal_max = snapped.high;
+  setOverlayWindow(layer, snapped.low, snapped.high);
   showOverlayRange(layer);
   commitOverlay();
   renderColorLegend();
@@ -1410,10 +1406,9 @@ const LEGEND_BAR_HEIGHT = 10;
 /**
  * Draw the active overlay's colour scale over the bottom-left of the view.
  *
- * The colours come from `nv.colormap(key)` — the LUT the shader itself samples —
- * rather than from the control points in `colormaps.js`, so the legend cannot
- * describe one scale while the surface renders another, and NiiVue's own maps
- * get a legend for free.
+ * `sampledColormap()` returns the LUT that the shader samples. Reading that LUT
+ * instead of this app's control points keeps the legend and the surface in sync,
+ * and it gives NiiVue's own maps a legend too.
  */
 function renderColorLegend() {
   const overlay = activeOverlay();
@@ -1428,11 +1423,12 @@ function renderColorLegend() {
 
   const width = kind === 'bar' ? LEGEND_BAR_WIDTH : LEGEND_WHEEL_SIZE;
   const height = kind === 'bar' ? LEGEND_BAR_HEIGHT : LEGEND_WHEEL_SIZE;
-  paintLegendCanvas(kind, state.nv.colormap(key), width, height);
+  paintLegendCanvas(kind, sampledColormap(state.nv, key), width, height);
 
+  const range = overlayLayerState(layer).range;
   ui.colorLegendTicks.replaceChildren(
     ...legendRings(kind),
-    ...legendTicks(kind, layer.cal_min, layer.cal_max).map((tick) => placeTick(kind, tick))
+    ...legendTicks(kind, range.low, range.high).map((tick) => placeTick(kind, tick))
   );
   ui.colorLegendCaption.textContent = overlay.name;
 }
@@ -1481,13 +1477,6 @@ function legendRings(kind) {
   });
 }
 
-/** Keep the ROI layer above any overlay so the boundary stays visible. */
-function reattachRoiLayer() {
-  const entry = activeSurface();
-  if (!entry) return;
-  restackLayers(entry);
-}
-
 /**
  * Rebuild the layer stack bottom-up: overlays exempt from the mask, then the
  * overlays it applies to, then the ROI layer on top.
@@ -1499,7 +1488,7 @@ function reattachRoiLayer() {
  */
 function restackLayers(entry) {
   entry.overlays.sort((a, b) => Number(b.ignoreMask) - Number(a.ignoreMask));
-  entry.mesh.layers = entry.overlays.map((overlay) => overlay.layer);
+  replaceLayerStack(entry.mesh, entry.overlays.map((overlay) => overlay.layer));
   attachLabelLayer(entry.mesh, entry.labelValues, currentLabelTable());
 }
 
@@ -1522,15 +1511,14 @@ function applyOverlayMask(entry, overlay) {
   const layer = overlay.layer;
 
   if (!mask) {
-    layer.values = overlay.baseValues;
-    layer.isTransparentBelowCalMin = overlay.baseTransparentBelowCalMin;
+    setOverlayValues(layer, overlay.baseValues, overlay.baseTransparentBelowCalMin);
     return;
   }
   overlay.maskedBuffer ||= new Float32Array(overlay.baseValues.length);
-  layer.values = maskedValues(
-    overlay.baseValues, mask.mask, layer.cal_min, overlay.maskedBuffer
+  const values = maskedValues(
+    overlay.baseValues, mask.mask, overlayLayerState(layer).range.low, overlay.maskedBuffer
   );
-  layer.isTransparentBelowCalMin = true;
+  setOverlayValues(layer, values, true);
 }
 
 /** Re-derive every overlay of every surface the mask covers. */
@@ -1686,10 +1674,11 @@ function renderLayerLists() {
 
 /** Show a sensible number of decimals for whatever the overlay's units are. */
 function showOverlayRange(layer) {
-  const span = Math.abs(layer.cal_max - layer.cal_min);
+  const { low, high } = overlayLayerState(layer).range;
+  const span = Math.abs(high - low);
   const decimals = rangeDecimals(span);
-  ui.overlayMin.value = Number(layer.cal_min.toFixed(decimals));
-  ui.overlayMax.value = Number(layer.cal_max.toFixed(decimals));
+  ui.overlayMin.value = Number(low.toFixed(decimals));
+  ui.overlayMax.value = Number(high.toFixed(decimals));
   ui.overlayMin.step = String(Number((span / 100).toFixed(decimals)) || 'any');
   ui.overlayMax.step = ui.overlayMin.step;
 }
@@ -2085,8 +2074,7 @@ function paintLabels() {
   // part of the region the way a 1-ring could.
   for (const v of session.chain) state.labelValues[v] = LABEL_BOUNDARY;
 
-  const roiLayer = state.mesh.layers.find((layer) => layer.name === 'surfannotate-roi');
-  if (roiLayer) roiLayer.colormapLabel = makeLabelLut(currentLabelTable());
+  updateLabelLayerLut(state.mesh, makeLabelLut(currentLabelTable()));
 
   commitLayer(state.nv, state.mesh);
 }

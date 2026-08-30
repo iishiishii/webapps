@@ -84,13 +84,15 @@ export function maskedValues(base, mask, calMin, out = new Float32Array(base.len
  *
  * Curvature is the surface's own shape, not a measurement on it: it is what the
  * user is looking *through* the mask at, so masking it would leave nothing
- * underneath. Matched on the FreeSurfer naming the request named — `lh.curv`,
- * `rh.curv` and anything extending them — and used only as the default for a
- * per-overlay switch, so a curvature file under another name is one click away.
+ * underneath. FreeSurfer uses `lh.curv`; GIfTI and BIDS files commonly use a
+ * standalone `curv` or `curvature` token instead. Used only as the default for
+ * a per-overlay switch, so an unusual name remains one click away.
  *
  * @param {string} name
  * @returns {boolean}
  */
 export function isCurvatureName(name) {
-  return /^[lr]h\.curv/i.test(name || '');
+  return String(name || '').split(/[._-]+/).some(
+    (part) => part.toLowerCase() === 'curv' || part.toLowerCase() === 'curvature'
+  );
 }

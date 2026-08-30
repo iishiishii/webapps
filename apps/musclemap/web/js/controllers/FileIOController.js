@@ -1,9 +1,3 @@
-/**
- * FileIOController
- *
- * Handles MRI file input for segmentation and metrics.
- * Auto-detects NIfTI vs DICOM files and keeps multiple contrast roles.
- */
 import { isNiftiFile as sharedIsNiftiFile } from '@neurodesk/webapp-components/file-io';
 
 const FILE_ROLE_OPTIONS = [
@@ -22,6 +16,10 @@ export class FileIOController {
     this.onViewFile = options.onViewFile || this.onFileLoaded;
     this.onFilesChanged = options.onFilesChanged || (() => {});
     this.onDicomFiles = options.onDicomFiles || (() => {});
+    this.labelSpaces = options.labelSpaces || [];
+    this.getDefaultLabelSpaceId = options.getDefaultLabelSpaceId || (() => (
+      this.labelSpaces.find(labelSpace => labelSpace.status === 'active')?.id || null
+    ));
 
     this.entries = [];
     this.nextEntryId = 1;
@@ -68,7 +66,7 @@ export class FileIOController {
   static inferRole(file) {
     const name = (file.name || '').toLowerCase();
     const compactName = name.replace(/[^a-z0-9]+/g, '');
-    if (/(^|[_\-.])(seg|label|labels|mask|segmentation)([_\-.]|$)/.test(name)) return 'segmentation';
+    if (/(^|[_\-.])(dseg|seg|label|labels|mask|segmentation)([_\-.]|$)/.test(name)) return 'segmentation';
     if (/(^|[_\-.])(fat|fatimg|fat-image)([_\-.]|$)/.test(name) || name.includes('dixon-fat')) return 'dixon_fat';
     if (/(^|[_\-.])(water|wat|waterimg|water-image)([_\-.]|$)/.test(name) || name.includes('dixon-water')) return 'dixon_water';
     if (/(^|[_\-.])(opp|opposed|out)([_\-.]|$)/.test(name) || compactName.includes('opposedphase') || compactName.includes('oppphase') || compactName.includes('outphase') || compactName.includes('outofphase')) return 'dixon_opposed_phase';
@@ -79,7 +77,7 @@ export class FileIOController {
   static roleLabel(role) {
     switch (role) {
       case 'anatomical':
-        return 'T1/T2 SE or segmentation contrast';
+        return 'Anatomical MRI or CT';
       case 'dixon_fat':
         return 'Dixon fat image';
       case 'dixon_water':
@@ -129,11 +127,14 @@ export class FileIOController {
 
   createEntry(file) {
     const role = FileIOController.inferRole(file);
+    const labelSpaceId = role === 'segmentation' ? this.getDefaultLabelSpaceId() : null;
     return {
       id: String(this.nextEntryId++),
       file,
       role,
-      runSegmentation: role !== 'segmentation'
+      runSegmentation: role !== 'segmentation',
+      labelSpaceId,
+      labelEncoding: labelSpaceId ? 'auto' : null
     };
   }
 
@@ -194,7 +195,16 @@ export class FileIOController {
     if (!entry) return;
 
     Object.assign(entry, patch);
-    if (entry.role === 'segmentation') entry.runSegmentation = false;
+    if (entry.role === 'segmentation') {
+      entry.runSegmentation = false;
+      if (!entry.labelSpaceId) {
+        entry.labelSpaceId = this.getDefaultLabelSpaceId();
+        entry.labelEncoding = entry.labelSpaceId ? 'auto' : null;
+      }
+    } else {
+      entry.labelSpaceId = null;
+      entry.labelEncoding = null;
+    }
     this.updateFileListUI();
     this.onFilesChanged(this.entries);
   }
@@ -274,6 +284,39 @@ export class FileIOController {
         runLabel.appendChild(document.createTextNode('Run segmentation'));
 
         controls.appendChild(role);
+        if (entry.role === 'segmentation') {
+          const labelContract = document.createElement('select');
+          labelContract.className = 'file-role-select';
+          labelContract.appendChild(new Option('Choose label space and encoding…', ''));
+          for (const labelSpace of this.labelSpaces) {
+            labelContract.appendChild(new Option(
+              `${labelSpace.label} v${labelSpace.modelVersion} (${labelSpace.status}) — auto-detect labels`,
+              `${labelSpace.id}|auto`
+            ));
+            labelContract.appendChild(new Option(
+              `${labelSpace.label} v${labelSpace.modelVersion} (${labelSpace.status}) — official sparse values`,
+              `${labelSpace.id}|sparse`
+            ));
+            labelContract.appendChild(new Option(
+              `${labelSpace.label} v${labelSpace.modelVersion} (${labelSpace.status}) — class indices`,
+              `${labelSpace.id}|class-index`
+            ));
+            if (labelSpace.supportsOpenRecon) {
+              labelContract.appendChild(new Option(
+                `${labelSpace.label} v${labelSpace.modelVersion} (${labelSpace.status}) — OpenRecon int12 values`,
+                `${labelSpace.id}|openrecon-int12`
+              ));
+            }
+          }
+          labelContract.value = entry.labelSpaceId
+            ? `${entry.labelSpaceId}|${entry.labelEncoding}`
+            : '';
+          labelContract.addEventListener('change', (event) => {
+            const [labelSpaceId = null, labelEncoding = null] = event.target.value.split('|');
+            this.updateEntry(entry.id, { labelSpaceId, labelEncoding });
+          });
+          controls.appendChild(labelContract);
+        }
         controls.appendChild(viewButton);
         controls.appendChild(runLabel);
         fileItem.appendChild(topRow);

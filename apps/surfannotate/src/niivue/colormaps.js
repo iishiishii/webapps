@@ -78,6 +78,11 @@ export function registerExtraColormaps(nv) {
   return registered;
 }
 
+/** The interpolated LUT NiiVue uses to render a named colour map. */
+export function sampledColormap(nv, key) {
+  return nv.colormap(key);
+}
+
 /**
  * One full turn, smallest first. Matched against the data's own maximum: an
  * angle map in degrees never peaks below 7 and one in radians never above 2*pi,

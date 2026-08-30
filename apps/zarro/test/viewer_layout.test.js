@@ -6,18 +6,24 @@ import {
   SLICE_TYPE,
 } from '@niivue/niivue'
 import {
+  DEFAULT_LAYOUT_ID,
   LAYOUT_PRESET,
   viewerLayoutConfig,
 } from '../src/viewer_layout.ts'
 
+test('NVSlide axial focus is the startup layout', () => {
+  assert.equal(DEFAULT_LAYOUT_ID, LAYOUT_PRESET.NVSLIDE_AXIAL_FOCUS)
+})
+
 test('equal slices uses three horizontal thirds without a render tile', () => {
   const layout = viewerLayoutConfig(LAYOUT_PRESET.EQUAL_SLICES)
 
-  assert.equal(layout.sliceType, SLICE_TYPE.MULTIPLANAR)
-  assert.equal(layout.showRender, SHOW_RENDER.NEVER)
-  assert.equal(layout.multiplanarType, MULTIPLANAR_TYPE.ROW)
-  assert.equal(layout.isEqualSize, true)
-  assert.equal(layout.customLayout, null)
+  assert.equal(layout.kind, 'niivue')
+  assert.equal(layout.niivue.sliceType, SLICE_TYPE.MULTIPLANAR)
+  assert.equal(layout.niivue.showRender, SHOW_RENDER.NEVER)
+  assert.equal(layout.niivue.multiplanarType, MULTIPLANAR_TYPE.ROW)
+  assert.equal(layout.niivue.isEqualSize, true)
+  assert.equal(layout.niivue.customLayout, null)
 })
 
 test('vertical equal slices use equal physical fields of view', () => {
@@ -27,12 +33,12 @@ test('vertical equal slices use equal physical fields of view', () => {
     extents,
   )
 
-  assert.equal(layout.sliceType, SLICE_TYPE.MULTIPLANAR)
-  assert.equal(layout.showRender, SHOW_RENDER.NEVER)
-  assert.equal(layout.multiplanarType, MULTIPLANAR_TYPE.COLUMN)
-  assert.equal(layout.isEqualSize, false)
+  assert.equal(layout.niivue.sliceType, SLICE_TYPE.MULTIPLANAR)
+  assert.equal(layout.niivue.showRender, SHOW_RENDER.NEVER)
+  assert.equal(layout.niivue.multiplanarType, MULTIPLANAR_TYPE.COLUMN)
+  assert.equal(layout.niivue.isEqualSize, false)
   assert.deepEqual(
-    layout.customLayout.map(({ sliceType, position }) => ({
+    layout.niivue.customLayout.map(({ sliceType, position }) => ({
       sliceType,
       position,
     })),
@@ -45,14 +51,30 @@ test('vertical equal slices use equal physical fields of view', () => {
 
   const fieldsOfView = [
     Math.min(extents[0], extents[1]) *
-      layout.customLayout[0].squareCropFraction,
+      layout.niivue.customLayout[0].squareCropFraction,
     Math.min(extents[0], extents[2]) *
-      layout.customLayout[1].squareCropFraction,
+      layout.niivue.customLayout[1].squareCropFraction,
     Math.min(extents[1], extents[2]) *
-      layout.customLayout[2].squareCropFraction,
+      layout.niivue.customLayout[2].squareCropFraction,
   ]
   assert.deepEqual(
     fieldsOfView.map((fieldOfView) => fieldOfView.toFixed(6)),
     ['67.310000', '67.310000', '67.310000'],
   )
+})
+
+test('NVSlide axial focus is a renderer layout with a valid NiiVue standby', () => {
+  const layout = viewerLayoutConfig(LAYOUT_PRESET.NVSLIDE_AXIAL_FOCUS)
+
+  assert.equal(layout.kind, 'nvslide')
+  assert.equal(layout.arrangement, 'axial-focus')
+  assert.equal(layout.niivue.sliceType, SLICE_TYPE.AXIAL)
+  assert.equal(layout.niivue.showRender, SHOW_RENDER.NEVER)
+})
+
+test('unknown layouts cannot become NiiVue slice types', () => {
+  const layout = viewerLayoutConfig(999)
+
+  assert.equal(layout.kind, 'niivue')
+  assert.equal(layout.niivue.sliceType, SLICE_TYPE.MULTIPLANAR)
 })

@@ -1,6 +1,6 @@
 {
   "name": "zarro",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "private": true,
   "type": "module",
   "license": "BSD-2-Clause",
@@ -10,7 +10,8 @@
     "build": "tsc --noEmit && vite build && node ../../scripts/theme-app-dist.mjs --app zarro",
     "preview": "vite preview",
     "prototype:fov": "node scripts/fov_framing_prototype.mjs",
-    "test": "node --test test/*.test.js && tsc --noEmit",
+    "verify:niivue-streaming": "node scripts/verify_niivue_streaming_patch.mjs",
+    "test": "node scripts/verify_niivue_streaming_patch.mjs && node --test test/*.test.js && tsc --noEmit",
     "test:e2e": "playwright test",
     "lint": "tsc --noEmit"
   },

@@ -1,113 +1,129 @@
 # MuscleMap Web App
 
-Browser-based whole-body muscle segmentation using a MONAI 2D UNet model running entirely client-side via ONNX Runtime Web. Segments 99 muscles from MRI — no server required.
+MuscleMap performs client-side MRI and CT muscle segmentation with official MuscleMap model definitions and ONNX Runtime Web. Images stay in the browser.
 
-## Quick Start
+Whole-body v1.4 is the default model. Whole-body v1.3 and the five regional v0.0 models remain selectable as legacy models.
 
-```bash
-# 1. Download ONNX Runtime WASM files
-cd web
-bash setup.sh
+## Run locally
 
-# 2. Start the development server
-#    The MuscleMap ONNX models are already committed in web/models/.
-bash run.sh
-```
-
-Open http://localhost:8080 in your browser.
-
-## Usage
-
-1. **Upload** a whole-body MRI as DICOM folder, NIfTI image, or NIfTI label map; use **Add File(s)** to append more NIfTI inputs
-2. Assign each loaded NIfTI to its role: T1/T2 SE image, Dixon fat, Dixon water, Dixon opposed-phase, Dixon in-phase, or segmentation label map
-3. Choose which image contrasts should run segmentation
-4. Optionally adjust **sliding window overlap**, **slice thickness**, or enable **Low-Res Mode** in Inference Settings
-5. Click **Run Segmentation**
-6. Inspect each generated segmentation overlay independently in **Results**
-7. In **Postprocessing**, optionally consolidate multiple segmentations into one label map
-8. In **Postprocessing**, optionally calculate volumetric metrics or IMF metrics. T1/T2 SE metrics use K-means or Gaussian-mixture thresholding from one source image; Dixon metrics require both fat and water images and can be calculated alongside T1/T2 SE IMF.
-9. **Download** segmentation NIfTI label maps or the metrics CSV
-
-All processing happens locally in your browser. Patient data is not uploaded.
-
-## Model Conversion
-
-Convert a MuscleMap PyTorch checkpoint to ONNX:
+From the monorepo root:
 
 ```bash
-pip install torch monai onnx onnxruntime
-
-# FP32 (full precision, ~54 MB)
-python scripts/convert_model.py --checkpoint /path/to/model.pth
-
-# UINT8 quantized (~14 MB, faster download)
-python scripts/convert_model.py --checkpoint /path/to/model.pth --quantize
+corepack pnpm --filter musclemap dev
 ```
 
-Output is saved to `web/models/musclemap-wholebody.onnx`.
+Open the URL printed by the development server. The setup command vendors ONNX Runtime support. Model binaries are fetched from the immutable URL generated from `model-sources/release.json` and are checked by byte length and SHA-256 before ONNX Runtime receives them.
 
-The ONNX files in `web/models/` are committed so the GitHub Pages deployment
-can serve them directly from the same origin. Temporary PyTorch checkpoints used
-for conversion are cached in `.tmp_weights/`, which is ignored by git.
+## Use the app
 
-## Project Structure
+1. Add a NIfTI image, a segmentation NIfTI, or a DICOM series.
+2. Assign each input its role. Anatomical segmentation accepts MRI or CT; Dixon inputs support fat metrics.
+3. Select an official model and run segmentation, or calculate metrics directly from an uploaded label map.
+4. Inspect the class-index display overlay and statistics.
+5. Download the NIfTI segmentation. Downloads use the model's official anatomical label values, not internal class indices.
 
-```
-musclemap-webapp/
-├── scripts/
-│   └── convert_model.py              # PyTorch → ONNX conversion
-├── web/
-│   ├── index.html                     # Main page
-│   ├── setup.sh                       # Downloads ONNX Runtime WASM
-│   ├── run.sh                         # Dev server (Python, COOP/COEP headers)
-│   ├── css/styles.css
-│   ├── js/
-│   │   ├── musclemap-app.js           # Main orchestrator
-│   │   ├── inference-worker.js        # Web Worker (full inference pipeline)
-│   │   ├── app/
-│   │   │   ├── config.js              # Model config, inference params
-│   │   │   └── labels.js              # 99 muscle labels + colors
-│   │   ├── controllers/
-│   │   │   ├── FileIOController.js    # NIfTI upload
-│   │   │   ├── DicomController.js     # DICOM folder upload + conversion
-│   │   │   ├── ViewerController.js    # NiiVue viewer
-│   │   │   └── InferenceExecutor.js   # Worker lifecycle
-│   │   └── modules/
-│   │       ├── inference/
-│   │       │   ├── preprocessing.js   # Orient, resample, normalize, crop
-│   │       │   ├── sliding-window.js  # 2D sliding window + Gaussian weighting
-│   │       │   ├── postprocessing.js  # Label cleanup, inverse transforms
-│   │       │   └── connected-components.js
-│   │       ├── file-io/
-│   │       │   └── NiftiUtils.js
-│   │       └── ui/
-│   │           ├── ConsoleOutput.js
-│   │           ├── ProgressManager.js
-│   │           ├── ModalManager.js
-│   │           └── MuscleLegend.js    # Detected muscles panel
-│   ├── dcm2niix/                      # DICOM→NIfTI WASM module
-│   ├── nifti-js/                      # NIfTI parser library
-│   ├── wasm/                          # ONNX Runtime WASM (downloaded by setup.sh, ignored by git)
-│   └── models/                        # ONNX models committed for GitHub Pages deployment
+Uploaded segmentation filenames containing `dseg`, `seg`, `label`, or `mask` are recognized as label maps. The selected model supplies the default label-space release, which remains explicit because partial masks cannot reliably distinguish releases. Label encoding defaults to automatic detection of official sparse values, browser class indices, or the reversible OpenRecon int12 mapping. Manual choices remain available for ambiguous files. Metrics and consolidation fail closed when attribution is missing, labels are unknown or meaningfully ambiguous, label spaces differ, or affine geometry differs. A successful metrics run makes a normalized NIfTI with official sparse labels available for download.
+
+## Model release workflow
+
+The release workflow separates conversion, scientific validation, publication, and activation. Do not activate a model from conversion results alone.
+
+Create the pinned Python 3.11 environment and convert the official v1.4 checkpoint:
+
+```bash
+corepack pnpm --filter musclemap model:env
+corepack pnpm --filter musclemap model:convert
 ```
 
-## Inference Pipeline
+Conversion verifies the checkpoint declared in `model-sources/release.json`, exports the FP32 release candidate, checks ONNX structure, and compares three seeded patches against PyTorch. Q8 remains available only as an explicit experimental conversion because it did not meet the per-label fidelity gate. Outputs are staged under `.tmp_model_release/wholebody-v1.4/`.
 
-1. **Parse** NIfTI (supports gzip, multiple datatypes)
-2. **Orient** to RAS using the affine matrix
-3. **Resample** to 1×1mm in-plane (keep original z spacing)
-4. **Normalize** intensity (z-score over nonzero voxels)
-5. **Crop** foreground bounding box + 20-voxel margin
-6. **Slice-by-slice 2D inference** with sliding window and Gaussian weighting
-7. **Inverse transform + cleanup** — default mode inverse-transforms first and then runs connected components at full output resolution; optional Low-Res Mode cleans in the cropped working volume before inverse transforms
-8. **Export** — write the segmentation back to original space for download and display
+Create a private fixture manifest outside source control:
 
-## Requirements
+```json
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "mr-1",
+      "modality": "MR",
+      "image": "/approved/mr.nii.gz",
+      "sha256": "<64 lowercase hexadecimal characters>",
+      "deidentified": true,
+      "approvedForLocalValidation": true,
+      "approvalReference": "<local approval record>"
+    },
+    {
+      "id": "ct-1",
+      "modality": "CT",
+      "image": "/approved/ct.nii.gz",
+      "sha256": "<64 lowercase hexadecimal characters>",
+      "deidentified": true,
+      "approvedForLocalValidation": true,
+      "approvalReference": "<local approval record>"
+    }
+  ]
+}
+```
 
-- A modern browser with WebAssembly support (Chrome, Firefox, Edge, Safari)
-- Python 3 (for the development server only)
-- For model conversion: `torch`, `monai`, `onnx`, `onnxruntime`
+Validate one candidate against the official PyTorch checkpoint:
 
-## Acknowledgements
+```bash
+corepack pnpm --filter musclemap model:validate -- \
+  --fixtures /approved/fixtures.json \
+  --checkpoint /approved/contrast_agnostic_wholebody_model.pth \
+  --precision fp32
+corepack pnpm --filter musclemap model:validate-browser -- --precision fp32
+corepack pnpm --filter musclemap model:validate-upstream -- \
+  --case vhp-neck \
+  --reference-root /approved/musclemap-e2e \
+  --precision fp32
+```
 
-Built on the [prostate-fiducial-seg](https://github.com/astewartau/prostate-fiducial-seg) web app template. Uses [NiiVue](https://github.com/niivue/niivue) for visualization, [ONNX Runtime Web](https://onnxruntime.ai) for inference, and [MONAI](https://monai.io) for the model architecture.
+The fixture validator requires both MR and CT, at least 99% aggregate voxel agreement, at least 0.95 Dice for every present reference class, and reference-output coverage of every changed or new class index from 86 through 113. The browser validator creates a real ONNX Runtime Web WASM session and requires at least 99% argmax agreement with three deterministic PyTorch reference maps. The upstream validator additionally runs the complete browser worker and checks affine, voxel agreement, foreground Dice, and per-label Dice against a full-volume upstream result made with the same source chunk size and overlap. It also checks WebGPU when the runner exposes it; release CI can pass `--require-webgpu` on a capable runner.
+
+After the report passes, publish with a rotated write token supplied only through the environment:
+
+```bash
+HF_TOKEN=... corepack pnpm --filter musclemap model:publish
+corepack pnpm --filter musclemap model:activate
+```
+
+The v1.4 FP32 model and its provenance report are immutable model-release assets. During the web build, `prepare_model_assets.mjs` verifies the full model and creates five deployment parts below Cloudflare Pages' per-file limit. The browser downloads those parts from the app origin, verifies each part, reconstructs the model, and verifies the full SHA-256 before inference. The publication scripts remain available for future Hugging Face releases that have matching conversion, fidelity, browser, upstream, and publication receipts.
+
+Never commit fixture data, checkpoints, staged ONNX files, reports that contain private paths, or access tokens.
+
+## Canonical contracts
+
+`model-sources/release.json` and the pinned upstream JSON files are authoritative. The checked-in JSON files are normalized semantic copies; the release descriptor records both their local digests and the exact published byte digests. Run:
+
+```bash
+corepack pnpm --filter musclemap models:generate
+corepack pnpm --filter musclemap models:check
+```
+
+The generator validates architecture, class counts, label uniqueness, config digests, publication metadata, and release status. It produces:
+
+- `web/js/app/model-catalog.generated.js` for the browser
+- `/models/musclemap.manifest.json` for hosted assets
+- `/packages/components/src/plugins/musclemap/index.js` for the shared plugin registry
+
+## Inference contract
+
+The v1.4 browser pipeline reproduces the upstream source-axis chunk boundary before preprocessing. Each chunk is oriented to RAS, resampled with its affine to 1 mm in-plane spacing while keeping native through-plane spacing, normalized over nonzero voxels, cropped with a 20-voxel margin, and padded at the end. It performs 2D sliding-window inference with Gaussian weighting, applies the inverse transforms to logits before argmax, and keeps the largest 6-connected component per label only after rebuilding the full source volume. Use the chunk size and overlap pinned in `model-sources/upstream-reference-cases.json` when reproducing a controlled upstream result.
+
+The worker stores class indices internally in `uint8`. It exports official sparse label values as `uint8` or `uint16`, according to the generated label-space contract. Display overlays always use a separate class-index NIfTI. OpenRecon whole-body labels are detected from release-derived membership tables and restored with `original = 10 * floor(mapped / 3) + mapped % 3`; range-only guesses are not used.
+
+## Verification
+
+```bash
+corepack pnpm --filter musclemap test
+corepack pnpm --filter musclemap build
+node --test test/registry.test.mjs test/app-plan.test.mjs
+node scripts/audit-artifacts.mjs --app musclemap
+```
+
+The scientific fidelity command is a separate release gate because ordinary unit and browser tests cannot establish model parity.
+
+## Sources and license
+
+The model configuration, labels, and checkpoint metadata come from [MuscleMap](https://github.com/MuscleMap/MuscleMap) at the revision recorded in `model-sources/release.json`. Whole-body v1.4 is published in [Zenodo record 21929873](https://zenodo.org/records/21929873) under the MIT license. The app also uses MONAI, ONNX Runtime Web, and NiiVue.

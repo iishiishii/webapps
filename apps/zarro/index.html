@@ -144,7 +144,8 @@
           <label class="field" for="layout">
             <span>Layout</span>
             <select id="layout">
-              <option value="30" selected>Axial focus</option>
+              <option value="34" selected>NVSlide axial focus</option>
+              <option value="30">Axial focus</option>
               <option value="31">Equal slices horizontal</option>
               <option value="33">Equal slices vertical</option>
               <option value="32">Equal slices + 3D</option>
@@ -396,6 +397,67 @@
 
       <main id="viewer" aria-label="OME-Zarr volume viewer">
         <canvas id="nv-canvas" aria-label="Interactive streamed volume" tabindex="0"></canvas>
+        <section
+          id="nvslideView"
+          class="nvslide-view"
+          aria-label="NVSlide orthogonal viewer"
+          hidden
+        >
+          <article class="nvslide-pane nvslide-pane-main" data-plane="axial">
+            <canvas class="nvslide-canvas" aria-label="Interactive axial NVSlide plane" tabindex="0"></canvas>
+            <div class="nvslide-crosshair" aria-hidden="true">
+              <span class="nvslide-crosshair-vertical"></span>
+              <span class="nvslide-crosshair-horizontal"></span>
+            </div>
+            <svg class="nvslide-measurements" aria-hidden="true"></svg>
+            <div class="nvslide-scale-bar" aria-hidden="true" hidden>
+              <span class="nvslide-scale-bar-line"></span>
+              <span class="nvslide-scale-bar-label"></span>
+            </div>
+            <output
+              class="nvslide-pane-loading"
+              aria-live="polite"
+              hidden
+            ></output>
+            <output class="nvslide-pane-status" aria-live="polite"></output>
+          </article>
+          <article class="nvslide-pane" data-plane="sagittal">
+            <canvas class="nvslide-canvas" aria-label="Interactive sagittal NVSlide plane" tabindex="0"></canvas>
+            <div class="nvslide-crosshair" aria-hidden="true">
+              <span class="nvslide-crosshair-vertical"></span>
+              <span class="nvslide-crosshair-horizontal"></span>
+            </div>
+            <svg class="nvslide-measurements" aria-hidden="true"></svg>
+            <div class="nvslide-scale-bar" aria-hidden="true" hidden>
+              <span class="nvslide-scale-bar-line"></span>
+              <span class="nvslide-scale-bar-label"></span>
+            </div>
+            <output
+              class="nvslide-pane-loading"
+              aria-live="polite"
+              hidden
+            ></output>
+            <output class="nvslide-pane-status" aria-live="polite"></output>
+          </article>
+          <article class="nvslide-pane" data-plane="coronal">
+            <canvas class="nvslide-canvas" aria-label="Interactive coronal NVSlide plane" tabindex="0"></canvas>
+            <div class="nvslide-crosshair" aria-hidden="true">
+              <span class="nvslide-crosshair-vertical"></span>
+              <span class="nvslide-crosshair-horizontal"></span>
+            </div>
+            <svg class="nvslide-measurements" aria-hidden="true"></svg>
+            <div class="nvslide-scale-bar" aria-hidden="true" hidden>
+              <span class="nvslide-scale-bar-line"></span>
+              <span class="nvslide-scale-bar-label"></span>
+            </div>
+            <output
+              class="nvslide-pane-loading"
+              aria-live="polite"
+              hidden
+            ></output>
+            <output class="nvslide-pane-status" aria-live="polite"></output>
+          </article>
+        </section>
         <svg
           id="crosshairOverlay"
           class="crosshair-overlay"

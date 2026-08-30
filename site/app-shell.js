@@ -13,6 +13,12 @@
     sourceHref: shellScript.dataset.sourceHref,
   };
 
+  const utilityControls = {
+    'easy-mp2rage': { header: 'body > header', selector: '#tutorialBtn, #resetAll' },
+    dicom2vid: { header: 'body > header', selector: '#tutorialBtn, #resetAll' },
+    qsmbly: { header: 'header.app-header', selector: '#openGuide, #appLogo' },
+  };
+
   const analyticsUrl = new URL(metadata.analyticsHref, document.baseURI);
   import(analyticsUrl.href)
     .then(({ initAnalytics }) => initAnalytics(metadata.measurementId))
@@ -155,9 +161,9 @@
     header.append(createBar());
   }
 
-  function preserveUtilityControls(header) {
+  function preserveUtilityControls(header, selector) {
     if (!header || header.dataset.neurodeskUtilitiesMoved !== undefined) return;
-    const controls = [...header.querySelectorAll('#tutorialBtn, #resetAll')];
+    const controls = [...header.querySelectorAll(selector)];
     if (controls.length) {
       const utilityBar = element('div', { className: 'nd-app-utility-bar' });
       utilityBar.setAttribute('aria-label', 'Application tools');
@@ -176,8 +182,9 @@
       document.querySelectorAll('#root header.bg-surface-primary.shadow-sm').forEach(replaceHeader);
     }
 
-    if (metadata.id === 'easy-mp2rage' || metadata.id === 'dicom2vid') {
-      preserveUtilityControls(document.querySelector('body > header'));
+    const utilities = utilityControls[metadata.id];
+    if (utilities) {
+      preserveUtilityControls(document.querySelector(utilities.header), utilities.selector);
     }
 
     if (metadata.id === 'qsmbly') {

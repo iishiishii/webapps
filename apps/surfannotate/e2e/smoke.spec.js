@@ -750,6 +750,27 @@ test('a binary mask limits every overlay but the curvature', async ({ page }) =>
   expect(cleared.data.inside).toBe(masked.data.inside);
 });
 
+test('an all-zero mask hides every non-exempt overlay', async ({ page }) => {
+  await loadSurface(page);
+  const count = await page.evaluate(() => window.__surfannotate.geometry.vertexCount);
+
+  await page.setInputFiles('#overlayInput',
+    curvFile('lh.thickness', count, (v) => 1 + (v % 100) / 100));
+  await expect(page.locator('#statusText')).toContainText('Overlay lh.thickness loaded', {
+    timeout: 60_000
+  });
+
+  await page.setInputFiles('#maskInput', curvFile('lh.empty.mask', count, () => 0));
+  await expect(page.locator('#statusText')).toContainText('limited to 0', {
+    timeout: 10_000
+  });
+
+  expect(await page.evaluate(() => {
+    const overlay = window.__surfannotateUi.activeSurface().overlays[0];
+    return overlay.layer.values.every((value) => value === -Infinity);
+  })).toBe(true);
+});
+
 test('a surface dropped on the viewer loads', async ({ page }) => {
   const bytes = readFileSync(join(FIXTURES, 'lh.pial')).toString('base64');
 

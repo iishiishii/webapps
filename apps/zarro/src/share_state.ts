@@ -1,3 +1,5 @@
+import { isLayoutId } from './viewer_layout.ts'
+
 export interface ShareableViewState {
   layout: number
   azimuth: number
@@ -70,7 +72,7 @@ export function readShareState(
       ? legacyEqualViews === '0'
         ? 30
         : 31
-      : layout !== null && [0, 1, 2, 4, 30, 31, 32, 33].includes(layout)
+      : layout !== null && isLayoutId(layout)
         ? layout
         : defaults.layout
   return {

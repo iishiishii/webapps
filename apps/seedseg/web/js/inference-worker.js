@@ -150,6 +150,14 @@ function createOutputNifti(float32Data, sourceHeader) {
   destView.setFloat32(112, 1, true);
   destView.setFloat32(116, 0, true);
 
+  // cal_min/cal_max from actual data range so outputs display correctly
+  let maxVal = 0;
+  for (let i = 0; i < float32Data.length; i++) {
+    if (float32Data[i] > maxVal) maxVal = float32Data[i];
+  }
+  destView.setFloat32(124, Math.max(1, maxVal), true);  // cal_max
+  destView.setFloat32(128, 0, true);                    // cal_min
+
   // Copy data
   new Float32Array(buffer, headerSize).set(float32Data);
 
@@ -427,15 +435,26 @@ async function fetchModel(url, modelName, progressBase, progressSpan) {
       postProgress(progressBase + progressSpan, `Cached: ${displayName}`);
       return cached;
     }
+    if (cached) await localforage.removeItem(url);
   } catch (e) {
     // Cache miss, continue to fetch
   }
 
-  // Stream download with progress
-  postLog(`Downloading: ${displayName}...`);
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch model: ${response.status} ${response.statusText}`);
+  // Stream download with progress, retrying once with a browser-cache bypass
+  let response = null;
+  let lastError = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      postLog(`Downloading: ${displayName}${attempt > 1 ? ' (retry)' : ''}...`);
+      response = await fetch(url, { cache: attempt > 1 ? 'reload' : 'default' });
+      if (response.ok) break;
+      lastError = new Error(`Failed to fetch model: ${response.status} ${response.statusText}`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (!response || !response.ok) {
+    throw lastError || new Error(`Failed to fetch model: ${displayName}`);
   }
 
   const contentLength = parseInt(response.headers.get('content-length'), 10);
@@ -462,6 +481,13 @@ async function fetchModel(url, modelName, progressBase, progressSpan) {
   for (const chunk of chunks) {
     data.set(chunk, offset);
     offset += chunk.length;
+  }
+
+  if (data.byteLength <= 1000000) {
+    try {
+      await localforage.removeItem(url);
+    } catch (e) { /* ignore cleanup failure */ }
+    throw new Error(`Downloaded model asset is unexpectedly small: ${displayName}`);
   }
 
   // Cache for next time

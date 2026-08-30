@@ -254,3 +254,40 @@ test('rejects an unavailable mosaic pyramid level before fetching', async () => 
     /level index 1 is unavailable/,
   )
 })
+
+test('forwards renderer cancellation to an active mosaic region read', async () => {
+  const session = new AbortController()
+  const request = new AbortController()
+  let observedSignal
+  const source = createMosaicChunkedVolumeSource({
+    datatypeCode: 2,
+    levels: [{ level: 0, shape: [32, 32, 32], spacing: [1, 1, 1] }],
+    signal: (requestSignal) =>
+      requestSignal
+        ? AbortSignal.any([session.signal, requestSignal])
+        : session.signal,
+    concurrency: 1,
+    fetchRegion: async (_level, _chunk, signal) => {
+      observedSignal = signal
+      await new Promise((resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), {
+          once: true,
+        })
+      })
+      return new Uint8Array()
+    },
+  })
+
+  const result = source.fetchChunk({
+    levelIndex: 0,
+    texOrigin: [0, 0, 0],
+    texDims: [4, 4, 4],
+    bytesPerVoxel: 1,
+    signal: request.signal,
+  })
+  request.abort(new DOMException('stale mosaic brick', 'AbortError'))
+
+  await assert.rejects(result, { name: 'AbortError' })
+  assert.equal(observedSignal?.aborted, true)
+  assert.equal(session.signal.aborted, false)
+})

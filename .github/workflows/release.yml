@@ -78,6 +78,9 @@ jobs:
       - name: Install Python reference dependencies
         if: matrix.python_reference
         run: pip install -r apps/${{ matrix.app }}/requirements.txt nibabel
+      - name: Test app-scoped runtime worker scope
+        if: matrix.app_scoped_runtime
+        run: node --test test/runtime-worker-scope.test.mjs test/runtime-assets-rewrite.test.mjs
       - name: Test app
         env:
           APP: ${{ matrix.app }}
@@ -86,10 +89,10 @@ jobs:
       - name: Build standalone app bundle
         run: pnpm --filter ${{ matrix.app }} build
       - name: Install browser
-        if: matrix.shared_runtime
+        if: matrix.browser_test
         run: pnpm exec playwright install --with-deps chromium
-      - name: Test shared runtime in a browser
-        if: matrix.shared_runtime
+      - name: Test app in a browser
+        if: matrix.browser_test
         run: pnpm --filter ${{ matrix.app }} test:e2e
       - name: Apply Neurodesk app theme
         run: node scripts/theme-app-dist.mjs --app ${{ matrix.app }}

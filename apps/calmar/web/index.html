@@ -36,6 +36,10 @@
       <span>Co-designed Automated Lesion Mapping and Reporting</span>
     </div>
     <div class="start-links">
+      <button class="header-link" type="button" title="About" onclick="document.getElementById('aboutButton').click()">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span>About</span>
+      </button>
       <button class="header-link" id="startPrivacyButton" type="button" title="Privacy">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         <span>Privacy</span>
@@ -580,7 +584,8 @@
 
   <footer class="app-footer">
     <span>CALMaR <span id="footerVersion"></span></span>
-    <span>Patient image data stays local in the browser.</span>
+    <span>Imaging data is processed locally in your browser and is not uploaded.</span>
+    <a href="../" style="color: var(--color-text-dim);">More Neurodesk webapps</a>
     <a href="https://github.com/neurodesk/webapps/tree/main/apps/calmar" target="_blank" style="color: var(--color-text-dim);">GitHub</a>
   </footer>
 

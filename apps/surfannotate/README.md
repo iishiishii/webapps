@@ -22,12 +22,13 @@ anything larger is degrees, and negative values take the signed variant.
 **Masking.** Load a binary mask — a FreeSurfer `.label`, a curv-format file, a
 `.mgz`, a GIfTI, anything with one value per vertex — and every overlay is drawn
 only where it is non-zero. Everywhere else the overlay is fully transparent, so
-the curvature underneath shows through as if nothing were loaded. This is what
-makes a retinotopy map readable: polar angle means nothing outside the region it
-was fitted in. Curvature is exempt by default (`lh.curv`, `rh.curv`), since it is
-the anatomy the mask exists to reveal, and any overlay can be exempted by hand
-with *Always show this overlay*. The mask follows the vertex indexing, so it
-carries across a subject's `white`, `pial` and `inflated`.
+the curvature underneath shows through as if nothing were loaded. An all-zero
+mask hides every non-exempt overlay. This is what makes a retinotopy map
+readable: polar angle means nothing outside the region it was fitted in.
+Curvature is exempt by default when the filename contains a `curv` or
+`curvature` token, since it is the anatomy the mask exists to reveal. You can
+exempt any overlay with *Always show this overlay*. The mask follows the vertex
+indexing, so it carries across a subject's `white`, `pial` and `inflated`.
 
 Masks are parsed rather than handed to NiiVue: its FreeSurfer curv reader
 min-max normalises and inverts, which would silently keep exactly the vertices

@@ -317,6 +317,45 @@ export async function readLayerValues(mesh, file) {
 }
 
 /**
+ * The NiiVue fields the UI needs from an overlay layer.
+ *
+ * Returning one plain object keeps field names such as `cal_min` inside this
+ * adapter. NiiVue 1.0 renames them, while the rest of SurfAnnotate's overlay
+ * model does not need to change.
+ */
+export function overlayLayerState(layer) {
+  return {
+    values: layer.values,
+    range: { low: layer.cal_min, high: layer.cal_max },
+    colormap: layer.colormap || 'gray',
+    transparentBelowCalMin: layer.isTransparentBelowCalMin
+  };
+}
+
+/** Change an overlay's numeric display window without uploading it yet. */
+export function setOverlayWindow(layer, low, high) {
+  layer.cal_min = low;
+  layer.cal_max = high;
+}
+
+/** Point an overlay at a value buffer and choose how values below its window behave. */
+export function setOverlayValues(layer, values, transparentBelowCalMin) {
+  layer.values = values;
+  layer.isTransparentBelowCalMin = transparentBelowCalMin;
+}
+
+/** Replace the mesh's layer stack. The caller supplies it in bottom-to-top order. */
+export function replaceLayerStack(mesh, layers) {
+  mesh.layers = [...layers];
+}
+
+/** Update the discrete LUT on SurfAnnotate's ROI layer, when that layer exists. */
+export function updateLabelLayerLut(mesh, lut) {
+  const layer = mesh.layers.find((candidate) => candidate.name === 'surfannotate-roi');
+  if (layer) layer.colormapLabel = lut;
+}
+
+/**
  * 2nd–98th percentile, so a handful of outliers cannot flatten the display.
  * Sampled rather than fully sorted: 20k samples is plenty to place a percentile
  * and keeps this well under a millisecond on a 160k-vertex overlay.

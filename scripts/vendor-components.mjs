@@ -7,14 +7,19 @@
 //
 // Run via each app's `vendor` script: `node ../../scripts/vendor-components.mjs`
 // pnpm runs lifecycle scripts with cwd set to the selected app package.
+// Apps whose static root is not `web/` (e.g. qsmbly serves from the app root)
+// pass `--dest <dir>` to vendor into `<dir>/vendor/` instead.
 import { cp, rm, access } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const appDir = process.cwd();
+const args = process.argv.slice(2);
+const destIndex = args.indexOf("--dest");
+const destRoot = destIndex !== -1 && args[destIndex + 1] ? args[destIndex + 1] : "web";
 const src = join(repoRoot, "packages", "components", "src");
-const dest = join(appDir, "web", "vendor", "webapp-components", "src");
+const dest = join(appDir, destRoot, "vendor", "webapp-components", "src");
 
 try {
   await access(src);
@@ -23,6 +28,6 @@ try {
   process.exit(1);
 }
 
-await rm(join(appDir, "web", "vendor"), { recursive: true, force: true });
+await rm(join(appDir, destRoot, "vendor"), { recursive: true, force: true });
 await cp(src, dest, { recursive: true });
 console.log(`Vendored @neurodesk/webapp-components -> ${dest.replace(repoRoot + "/", "")}`);

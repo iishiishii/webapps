@@ -14,6 +14,7 @@ import { ModalManager } from '@neurodesk/webapp-components/ui';
 import * as Config from './app/config.js';
 import { generateNiivueColormap, getLabelName } from './app/labels.js';
 import { computeAutoWindow } from '@neurodesk/webapp-components/volume';
+import { downloadArrayBuffer } from '@neurodesk/webapp-components/file-io';
 import {
   buildResultVolumeStack,
   defaultResultVisibility,
@@ -611,15 +612,7 @@ class VesselBoostApp {
     const vol = this.nv.volumes[0];
     const name = (vol.name || 'volume').replace(/\.(nii|nii\.gz)$/i, '');
     const niftiBuffer = this.createNiftiFromVolume(vol);
-    const blob = new Blob([niftiBuffer], { type: 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${name}.nii`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadArrayBuffer(niftiBuffer, `${name}.nii`);
     this.updateOutput(`Downloaded: ${name}.nii`);
   }
 
