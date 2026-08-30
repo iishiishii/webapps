@@ -1,11 +1,8 @@
 #!/bin/bash
+# Thin wrapper kept for tooling that runs `bash web/run.sh [port]`; the server
+# itself is the shared scripts/dev-server.mjs (which also sends the COOP/COEP
+# headers SharedArrayBuffer needs, so local dev no longer depends solely on
+# coi-serviceworker.js).
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PORT="${1:-8080}"
-echo "=== SeedSeg Development Server ==="
-echo "Serving at: http://localhost:$PORT"
-echo "Press Ctrl+C to stop"
-cd "$SCRIPT_DIR"
-
-# coi-serviceworker.js handles COOP/COEP for SharedArrayBuffer
-python3 -m http.server $PORT
+exec node "$SCRIPT_DIR/../../../scripts/dev-server.mjs" --dir "$SCRIPT_DIR" --port "${1:-8080}"

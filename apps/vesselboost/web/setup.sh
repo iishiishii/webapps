@@ -1,29 +1,11 @@
 #!/bin/bash
-# One-time setup: download ONNX Runtime Web WASM files
+# One-time setup: fetch the manifest-pinned ONNX Runtime Web files and build
+# the optional Rust preprocessing WASM. File names, URLs, and sha256 checksums
+# come from runtime-assets/manifest.json via the shared fetcher.
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-mkdir -p "$SCRIPT_DIR/wasm"
-
-# ONNX Runtime Web
-ORT_VERSION="1.21.0"
-ORT_BASE="https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist"
-
-echo "Downloading ONNX Runtime Web v${ORT_VERSION}..."
-
-ORT_FILES=(
-  ort.webgpu.min.js
-  ort-wasm-simd-threaded.mjs
-  ort-wasm-simd-threaded.wasm
-  ort-wasm-simd-threaded.jsep.mjs
-  ort-wasm-simd-threaded.jsep.wasm
-)
-
-for f in "${ORT_FILES[@]}"; do
-  echo "  $f"
-  curl -sL -o "$SCRIPT_DIR/wasm/$f" "$ORT_BASE/$f"
-done
-
-echo "Done. Files saved to wasm/"
+node "$SCRIPT_DIR/../../../scripts/fetch-app-runtime.mjs" --dest "$SCRIPT_DIR/wasm" \
+  ort-web:ort.webgpu.min.js,ort-wasm-simd-threaded.mjs,ort-wasm-simd-threaded.wasm,ort-wasm-simd-threaded.jsep.mjs,ort-wasm-simd-threaded.jsep.wasm
 
 # Build preprocessing WASM if rust-preprocessing/ exists and wasm-pack is installed
 RUST_DIR="$SCRIPT_DIR/../rust-preprocessing"

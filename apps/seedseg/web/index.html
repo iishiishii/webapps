@@ -1,6 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script type="importmap">
+  {
+    "imports": {
+      "@neurodesk/webapp-components": "./vendor/webapp-components/src/index.js",
+      "@neurodesk/webapp-components/ui": "./vendor/webapp-components/src/ui/index.js",
+      "@neurodesk/webapp-components/file-io": "./vendor/webapp-components/src/file-io/index.js",
+      "@neurodesk/webapp-components/volume": "./vendor/webapp-components/src/volume/index.js",
+      "@neurodesk/webapp-components/": "./vendor/webapp-components/src/"
+    }
+  }
+  </script>
+
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SeedSeg - Prostate Gold Seed Segmentation</title>
@@ -274,7 +286,8 @@
   <!-- Footer -->
   <footer class="app-footer">
     <span>SeedSeg <span id="footerVersion"></span></span>
-    <span>All processing happens locally in your browser. No data is uploaded.</span>
+    <span>Imaging data is processed locally in your browser and is not uploaded.</span>
+    <a href="../" style="color: var(--color-text-dim);">More Neurodesk webapps</a>
     <a href="https://github.com/neurodesk/webapps/tree/main/apps/seedseg" target="_blank" style="color: var(--color-text-dim);">GitHub</a>
   </footer>
 

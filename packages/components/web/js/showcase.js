@@ -235,15 +235,28 @@ function renderReportSection() {
     reportRoot
   ]);
   app.addSidebarSection({ id: 'validation', title: 'Validation Report', badge: 'checks', content });
-  new DicompareReportRenderer({ element: reportRoot }).render({
+  new DicompareReportRenderer().render(reportRoot, {
+    schema: {
+      name: 'QSM Consensus Guidelines',
+      version: '1.0',
+      acquisitions: {
+        'GRE multi-echo': {
+          fields: [
+            { field: 'EchoTime', tag: '(0018,0081)' },
+            { field: 'FlipAngle', tag: '(0018,1314)' }
+          ],
+          rules: [{ name: 'Echo spacing', description: 'Echo spacing is consistent across echoes.' }]
+        }
+      }
+    },
     acquisitions: [{ name: 'GRE multi-echo' }],
     complianceResults: [
       {
         acquisitionName: 'GRE multi-echo',
         results: [
-          { passed: true, message: 'Echo spacing is consistent across 4 echoes.' },
-          { passed: true, message: 'Magnitude and phase files are paired.' },
-          { passed: false, message: 'BIDS JSON missing optional IntendedFor field.' }
+          { fieldName: 'EchoTime', expectedValue: [4, 8, 12, 16], actualValue: [4, 8, 12, 16], status: 'pass' },
+          { fieldName: 'FlipAngle', expectedValue: 15, actualValue: 20, status: 'fail', message: 'Flip angle exceeds guideline.' },
+          { rule_name: 'Echo spacing', status: 'pass', message: 'Echo spacing is consistent across 4 echoes.' }
         ]
       }
     ]

@@ -1,7 +1,10 @@
-/**
- * DicomController - Handles DICOM to NIfTI conversion.
- * Uses vendored @niivue/dcm2niix (WASM) for in-browser conversion.
- */
+import { DicomController as SharedDicomController, isNiftiFile } from '@neurodesk/webapp-components/file-io';
+
+// MuscleMap-specific behavior kept on top of the shared controller: a 1 GiB WASM
+// input-size guard (browser dcm2niix holds DICOM input and NIfTI output in WASM
+// memory, so oversized studies must be converted natively) and multi-series output
+// (every converted NIfTI is handed to onConversionComplete so the file list can
+// offer all series, not just the first).
 
 const DICOM_WASM_INPUT_LIMIT_BYTES = 1024 ** 3;
 
@@ -20,111 +23,22 @@ function formatBytes(bytes) {
   return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
-export class DicomController {
+export class DicomController extends SharedDicomController {
   constructor(options = {}) {
-    this.onConversionComplete = options.onConversionComplete || (() => {});
-    this.updateOutput = options.updateOutput || console.log;
-    this.dcm2niixModule = null;
-    this.converting = false;
-  }
-
-  async _createInstance() {
-    if (!this.dcm2niixModule) {
-      this.dcm2niixModule = await import('../../dcm2niix/index.js');
-    }
-    const dcm2niix = new this.dcm2niixModule.Dcm2niix();
-    await dcm2niix.init();
-    return dcm2niix;
+    super({ ...options, moduleUrl: new URL('../../dcm2niix/index.js', import.meta.url).href, throwOnError: false });
   }
 
   async convertFiles(files) {
-    if (!files || files.length === 0) return;
-
-    if (this._warnIfTooLargeForBrowserConversion(files)) return;
-
-    this.converting = true;
-    this.updateOutput(`Converting ${files.length} DICOM files...`);
-
-    try {
-      const dcm2niix = await this._createInstance();
-      const result = await dcm2niix.input(files).run();
-      this._processResults(result);
-    } catch (error) {
-      console.error('DICOM conversion error:', error);
-      this.updateOutput(`DICOM conversion failed: ${error.message}`);
-    } finally {
-      this.converting = false;
-    }
+    const inputFiles = Array.from(files || []);
+    if (inputFiles.length && this._warnIfTooLargeForBrowserConversion(inputFiles)) return null;
+    return super.convertFiles(inputFiles);
   }
 
-  async convertDropItems(dataTransferItems) {
-    if (!dataTransferItems || dataTransferItems.length === 0) return;
-
-    this.converting = true;
-    this.updateOutput('Reading dropped files...');
-
-    try {
-      const entries = [];
-      for (let i = 0; i < dataTransferItems.length; i++) {
-        const entry = dataTransferItems[i].webkitGetAsEntry?.();
-        if (entry) entries.push(entry);
-      }
-
-      const files = [];
-      for (const entry of entries) {
-        await this._traverseFileTree(entry, '', files);
-      }
-
-      if (files.length === 0) {
-        this.updateOutput('No DICOM files found in dropped items.');
-        this.converting = false;
-        return;
-      }
-
-      if (this._warnIfTooLargeForBrowserConversion(files)) {
-        this.converting = false;
-        return;
-      }
-
-      this.updateOutput(`Converting ${files.length} DICOM files...`);
-      const dcm2niix = await this._createInstance();
-      const result = await dcm2niix.input(files).run();
-      this._processResults(result);
-    } catch (error) {
-      console.error('DICOM conversion error:', error);
-      this.updateOutput(`DICOM conversion failed: ${error.message}`);
-    } finally {
-      this.converting = false;
-    }
-  }
-
-  _traverseFileTree(item, path, fileArray) {
-    return new Promise((resolve) => {
-      if (item.isFile) {
-        item.file(file => {
-          file._webkitRelativePath = path + file.name;
-          fileArray.push(file);
-          resolve();
-        });
-      } else if (item.isDirectory) {
-        const dirReader = item.createReader();
-        const readAllEntries = () => {
-          dirReader.readEntries(entries => {
-            if (entries.length > 0) {
-              const promises = entries.map(entry =>
-                this._traverseFileTree(entry, path + item.name + '/', fileArray)
-              );
-              Promise.all(promises).then(readAllEntries);
-            } else {
-              resolve();
-            }
-          });
-        };
-        readAllEntries();
-      } else {
-        resolve();
-      }
-    });
+  _selectNifti(resultFiles) {
+    const niftiFiles = Array.from(resultFiles || []).filter(isNiftiFile);
+    if (!niftiFiles.length) throw new Error('No NIfTI files produced. Are these valid DICOM files?');
+    this.updateOutput(`Converted ${niftiFiles.length} NIfTI file(s).`);
+    return niftiFiles;
   }
 
   _warnIfTooLargeForBrowserConversion(files) {
@@ -153,19 +67,5 @@ export class DicomController {
       'Convert with native dcm2niix first, then load the .nii or .nii.gz file.'
     ].filter(Boolean).join(' '));
     return true;
-  }
-
-  _processResults(resultFiles) {
-    const niftiFiles = resultFiles.filter(f =>
-      f.name.endsWith('.nii') || f.name.endsWith('.nii.gz')
-    );
-
-    if (niftiFiles.length === 0) {
-      this.updateOutput('No NIfTI files produced. Are these valid DICOM files?');
-      return;
-    }
-
-    this.updateOutput(`Converted ${niftiFiles.length} NIfTI file(s).`);
-    this.onConversionComplete(niftiFiles);
   }
 }

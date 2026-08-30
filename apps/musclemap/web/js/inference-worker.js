@@ -213,7 +213,7 @@ function createOutputNifti(labelData, sourceHeader, dims) {
       maxLabel = Math.max(maxLabel, value);
     }
   }
-  destView.setFloat32(124, maxLabel, true);
+  destView.setFloat32(124, Math.max(1, maxLabel), true);
   destView.setFloat32(128, 0, true);
   return buffer;
 }
@@ -621,6 +621,7 @@ async function fetchModel(asset, modelName, progressBase, progressSpan) {
     await localforage.removeItem(cacheKey).catch(() => {});
   }
 
+  let lastError = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     postLog(`Downloading: ${displayName}${attempt === 2 ? ' (retry)' : ''}...`);
     const sources = asset.parts?.length
@@ -632,34 +633,38 @@ async function fetchModel(asset, modelName, progressBase, progressSpan) {
     const data = new Uint8Array(asset.bytes);
     let received = 0;
     let lastReportedPercent = -1;
-    for (const source of sources) {
-      const response = await fetch(source.url, { cache: 'no-store' });
-      if (!response.ok) throw new Error(`Failed to fetch model: ${response.status} ${response.statusText}`);
-      const reader = response.body.getReader();
-      const partStart = received;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (received + value.length > data.length) throw new Error('Downloaded model exceeds the declared byte length');
-        data.set(value, received);
-        received += value.length;
-        const dlProgress = received / asset.bytes;
-        const percent = Math.floor(dlProgress * 100);
-        if (percent !== lastReportedPercent) {
-          lastReportedPercent = percent;
-          const mb = (received / 1048576).toFixed(1);
-          const totalMb = (asset.bytes / 1048576).toFixed(0);
-          postProgress(progressBase + dlProgress * progressSpan, `Downloading ${displayName} (${mb}/${totalMb} MB)`);
-        }
-      }
-      await MuscleMapAssetIntegrity.verifyAssetBuffer(data.slice(partStart, received).buffer, source);
-    }
-
     try {
+      for (const source of sources) {
+        const response = await fetch(source.url, { cache: attempt === 1 ? 'no-store' : 'reload' });
+        if (!response.ok) throw new Error(`Failed to fetch model: ${response.status} ${response.statusText}`);
+        const reader = response.body.getReader();
+        const partStart = received;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (received + value.length > data.length) throw new Error('Downloaded model exceeds the declared byte length');
+          data.set(value, received);
+          received += value.length;
+          const dlProgress = received / asset.bytes;
+          const percent = Math.floor(dlProgress * 100);
+          if (percent !== lastReportedPercent) {
+            lastReportedPercent = percent;
+            const mb = (received / 1048576).toFixed(1);
+            const totalMb = (asset.bytes / 1048576).toFixed(0);
+            postProgress(progressBase + dlProgress * progressSpan, `Downloading ${displayName} (${mb}/${totalMb} MB)`);
+          }
+        }
+        if (received - partStart < source.bytes) {
+          throw new Error(`Downloaded model asset is unexpectedly small: ${displayName}`);
+        }
+        await MuscleMapAssetIntegrity.verifyAssetBuffer(data.slice(partStart, received).buffer, source);
+      }
       await MuscleMapAssetIntegrity.verifyAssetBuffer(data.buffer, asset);
     } catch (error) {
+      lastError = error;
+      await localforage.removeItem(cacheKey).catch(() => {});
       if (attempt === 2) throw error;
-      postLog(`Downloaded model failed verification: ${error.message}`);
+      postLog(`Model download failed: ${error.message}`);
       continue;
     }
 
@@ -673,7 +678,7 @@ async function fetchModel(asset, modelName, progressBase, progressSpan) {
     return data.buffer;
   }
 
-  throw new Error(`Unable to verify downloaded model: ${displayName}`);
+  throw lastError || new Error(`Unable to verify downloaded model: ${displayName}`);
 }
 
 // ==================== Chunk Size Resolution ====================

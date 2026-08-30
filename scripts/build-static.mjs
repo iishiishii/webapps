@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { writeCoiServiceWorker } from "./lib/runtime-support.mjs";
+import { headersFile } from "./lib/vite-app-config.mjs";
 
 // pnpm preserves the outer shell's INIT_CWD for `pnpm --filter app build`,
 // while the lifecycle process cwd is always the package being built.
@@ -29,6 +30,10 @@ if (config.include) {
 } else {
   await cp(join(appDir, config.source), dist, copyOptions);
 }
+
+// One production header policy for every standalone dist (replaces any copied
+// per-app web/_headers so bundles cannot drift from the composite policy).
+await writeFile(join(dist, "_headers"), headersFile);
 
 if (config.buildInfo) {
   const git = (...args) => {

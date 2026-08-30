@@ -7,7 +7,7 @@ test('app-local changes select only that webapp', async () => {
   const registry = await loadAppsRegistry();
   const plan = createAppPlan(registry, ['apps/niimath/main.js']);
   assert.deepEqual(plan.selected.map((app) => app.id), ['niimath']);
-  assert.deepEqual(plan.sharedApps.include, []);
+  assert.deepEqual(plan.browserApps.include, []);
 });
 
 test('app registration and lockfile updates stay scoped to that webapp', async () => {
@@ -19,7 +19,7 @@ test('app registration and lockfile updates stay scoped to that webapp', async (
     'registry/apps.yml',
   ]);
   assert.deepEqual(plan.selected.map((app) => app.id), ['surfannotate']);
-  assert.deepEqual(plan.sharedApps.include.map(({ app }) => app), ['surfannotate']);
+  assert.deepEqual(plan.browserApps.include.map(({ app }) => app), ['surfannotate']);
   assert.equal(plan.allApps, false);
 });
 
@@ -28,8 +28,8 @@ test('shared module changes select the complete app catalog', async () => {
   const plan = createAppPlan(registry, ['packages/components/src/ui/ProgressManager.js']);
   assert.equal(plan.selected.length, registry.apps.length);
   assert.deepEqual(
-    plan.sharedApps.include.map(({ app }) => app),
-    registry.apps.filter((app) => app.ci.shared_runtime).map((app) => app.id),
+    plan.browserApps.include.map(({ app }) => app),
+    registry.apps.filter((app) => app.ci.browser_test).map((app) => app.id),
   );
 });
 
@@ -43,6 +43,8 @@ test('toolchain facts are carried into generated matrices', async () => {
     rust_wasm: true,
     python_reference: false,
     shared_runtime: false,
+    browser_test: false,
+    app_scoped_runtime: false,
     release_test: 'test',
   }]);
 });

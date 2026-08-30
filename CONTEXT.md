@@ -11,8 +11,9 @@ The validated `registry/apps.yml` inventory. It is the source of truth for publi
 paths, build adapters, source provenance, licences, and scientific asset manifests.
 
 The catalog also owns each webapp's shell adapter, CI toolchains, maintainers,
-support status, shared-runtime coverage, and release eligibility. Automation must
-derive those facts from the catalog rather than repeat app lists in workflows or tests.
+support status, runtime-store consumption, browser-test coverage, and release
+eligibility. Automation must derive those facts from the catalog rather than
+repeat app lists in workflows or tests.
 
 ## Composite site
 

@@ -1,38 +1,31 @@
 /**
  * DicomController - Handles DICOM to NIfTI conversion and classification.
- * Uses vendored @niivue/dcm2niix (WASM) for in-browser conversion.
+ *
+ * Conversion plumbing (dcm2niix WASM instance, drop-tree traversal) comes from
+ * the shared @neurodesk/webapp-components controller; the QSM-specific batch
+ * classification (magnitude/phase/extras triage, echo times, field strength)
+ * stays local because the shared controller only selects a single NIfTI.
  *
  * This controller is stateless with respect to classification results — each
  * conversion produces a batch result that is passed to the onConversionComplete
  * callback. Accumulation across batches is handled by the consumer (QSMApp._triageState).
  */
+import { DicomController as SharedDicomController } from '@neurodesk/webapp-components/file-io';
 
-export class DicomController {
+export class DicomController extends SharedDicomController {
   constructor(options = {}) {
-    this.onConversionComplete = options.onConversionComplete || (() => {});
-    this.onFilesRetained = options.onFilesRetained || (() => {});
-    this.updateOutput = options.updateOutput || console.log;
-
-    this.dcm2niixModule = null; // Lazy-loaded module
-    this.converting = false;
+    super({
+      ...options,
+      moduleUrl: new URL('../../dcm2niix/index.js', import.meta.url).href,
+      onDicomFiles: options.onDicomFiles || options.onFilesRetained,
+      throwOnError: false,
+    });
   }
 
   /**
-   * Lazy-initialize the dcm2niix WASM module.
-   * Creates a fresh Dcm2niix instance each time (worker FS doesn't reset).
-   */
-  async _createInstance() {
-    if (!this.dcm2niixModule) {
-      this.dcm2niixModule = await import('../../dcm2niix/index.js');
-    }
-    const dcm2niix = new this.dcm2niixModule.Dcm2niix();
-    await dcm2niix.init();
-    return dcm2niix;
-  }
-
-  /**
-   * Convert DICOM files from a file input (webkitdirectory).
-   * Files already have webkitRelativePath set by the browser.
+   * Convert DICOM files (file input or drop traversal via the shared
+   * convertDropItems). Overrides the shared flow to classify the whole batch
+   * instead of selecting a single NIfTI.
    */
   async convertFiles(files) {
     if (!files || files.length === 0) return;
@@ -40,8 +33,8 @@ export class DicomController {
     this.converting = true;
     this.updateOutput(`Converting ${files.length} DICOM files...`);
 
-    // Retain original files for dicompare validation
-    this.onFilesRetained(files);
+    // Retain original files for dicompare validation (not awaited: runs alongside conversion)
+    if (this.onDicomFiles) this.onDicomFiles(files);
 
     try {
       const dcm2niix = await this._createInstance();
@@ -55,83 +48,9 @@ export class DicomController {
     }
   }
 
-  /**
-   * Convert DICOM files from a drag-and-drop event.
-   * Traverses directory tree and sets _webkitRelativePath on each file.
-   */
-  async convertDropItems(dataTransferItems) {
-    if (!dataTransferItems || dataTransferItems.length === 0) return;
-
-    this.converting = true;
-    this.updateOutput('Reading dropped files...');
-
-    try {
-      // Collect all entries synchronously BEFORE any async work.
-      // Chrome invalidates the DataTransferItemList after an async yield,
-      // so webkitGetAsEntry() must be called for all items immediately.
-      const entries = [];
-      for (let i = 0; i < dataTransferItems.length; i++) {
-        const entry = dataTransferItems[i].webkitGetAsEntry?.();
-        if (entry) entries.push(entry);
-      }
-
-      const files = [];
-      for (const entry of entries) {
-        await this._traverseFileTree(entry, '', files);
-      }
-
-      if (files.length === 0) {
-        this.updateOutput('No DICOM files found in dropped items.');
-        this.converting = false;
-        return;
-      }
-
-      // Retain original files for dicompare validation
-      this.onFilesRetained(files);
-
-      this.updateOutput(`Converting ${files.length} DICOM files...`);
-      const dcm2niix = await this._createInstance();
-      const result = await dcm2niix.input(files).run();
-      await this._processResults(result);
-    } catch (error) {
-      console.error('DICOM conversion error:', error);
-      this.updateOutput(`DICOM conversion failed: ${error.message}`);
-    } finally {
-      this.converting = false;
-    }
-  }
-
-  /**
-   * Recursively traverse a dropped directory tree.
-   * Sets _webkitRelativePath on each File for dcm2niix.
-   */
-  _traverseFileTree(item, path, fileArray) {
-    return new Promise((resolve) => {
-      if (item.isFile) {
-        item.file(file => {
-          file._webkitRelativePath = path + file.name;
-          fileArray.push(file);
-          resolve();
-        });
-      } else if (item.isDirectory) {
-        const dirReader = item.createReader();
-        const readAllEntries = () => {
-          dirReader.readEntries(entries => {
-            if (entries.length > 0) {
-              const promises = entries.map(entry =>
-                this._traverseFileTree(entry, path + item.name + '/', fileArray)
-              );
-              Promise.all(promises).then(readAllEntries);
-            } else {
-              resolve();
-            }
-          });
-        };
-        readAllEntries();
-      } else {
-        resolve();
-      }
-    });
+  async convertDropItems(items) {
+    if (items?.length) this.updateOutput('Reading dropped files...');
+    return super.convertDropItems(items);
   }
 
   /**

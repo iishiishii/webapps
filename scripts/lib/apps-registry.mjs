@@ -1,13 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parse } from 'yaml';
+import { isScalar, parse, parseDocument, visit } from 'yaml';
 
 export const repoRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 export const registryPath = join(repoRoot, 'registry', 'apps.yml');
 
 const ID = /^[a-z][a-z0-9-]*$/;
-const RUNTIMES = new Set([
+export const RUNTIMES = new Set([
   'static-esm',
   'static-esm-rust',
   'rust-wasm',
@@ -15,8 +15,8 @@ const RUNTIMES = new Set([
   'vite-wasm',
   'vite-webgpu',
 ]);
-const SHELLS = new Set(['static-html', 'imaging-workspace', 'react']);
-const SUPPORT_STATUSES = new Set(['active', 'experimental', 'maintenance', 'retired']);
+export const SHELLS = new Set(['static-html', 'imaging-workspace', 'react']);
+export const SUPPORT_STATUSES = new Set(['active', 'experimental', 'maintenance', 'retired']);
 const TOOLCHAINS = new Set(['node', 'rust-wasm', 'python-reference']);
 const ASSET_MANIFEST_SCHEMAS = new Set(['scientific-assets-v1', 'pipeline-assets-v1']);
 const PINNED_SOURCE = /^[^/\s]+\/[^@\s]+@[0-9a-f]{40}$/;
@@ -88,6 +88,9 @@ export async function loadAppsRegistry(path = registryPath) {
     if (typeof app.ci?.shared_runtime !== 'boolean' || typeof app.ci?.release !== 'boolean') {
       errors.push(`ci.shared_runtime and ci.release must be booleans for ${app.id}`);
     }
+    if (app.ci?.browser_test !== undefined && typeof app.ci.browser_test !== 'boolean') {
+      errors.push(`ci.browser_test must be a boolean for ${app.id}`);
+    }
     if (app.ci?.release_test !== undefined && !PACKAGE_SCRIPT.test(app.ci.release_test)) {
       errors.push(`invalid ci.release_test for ${app.id}: ${app.ci.release_test}`);
     }
@@ -127,6 +130,7 @@ export async function loadAppsRegistry(path = registryPath) {
     }),
     apps: Object.freeze(registry.apps.map((app) => Object.freeze({
       ...app,
+      ci: Object.freeze({ browser_test: false, ...app.ci }),
       keywords: Object.freeze([...app.keywords]),
       app_scoped_runtime_families: Object.freeze([...(app.app_scoped_runtime_families ?? [])]),
     }))),
@@ -137,4 +141,24 @@ export function findApp(registry, id) {
   const app = registry.apps.find((candidate) => candidate.id === id);
   if (!app) throw new Error(`Unknown app '${id}'`);
   return app;
+}
+
+// Return the registry text with `app` appended to `apps`, preserving the
+// existing comments, blank lines, key order, and inline `[a, b]` sequences.
+// The result is not validated; callers must run loadAppsRegistry on it.
+export function addAppToRegistryText(text, app) {
+  const doc = parseDocument(text);
+  if (doc.errors.length) {
+    throw new Error(`Invalid app registry YAML:\n- ${doc.errors.map((e) => e.message).join('\n- ')}`);
+  }
+  const apps = doc.get('apps');
+  if (!apps || typeof apps.add !== 'function') throw new Error('apps must be a sequence');
+  const node = doc.createNode(app);
+  visit(node, {
+    Seq(_, seq) {
+      if (seq.items.every((item) => isScalar(item))) seq.flow = true;
+    },
+  });
+  apps.add(node);
+  return doc.toString({ lineWidth: 0, flowCollectionPadding: false });
 }

@@ -7,12 +7,10 @@
 import { FileIOController } from './controllers/FileIOController.js';
 import { DicomController } from './controllers/DicomController.js';
 import { DicompareController } from 'https://dicompare.neurodesk.org/embed/DicompareController.js';
-import { DicompareReportRenderer } from 'https://dicompare.neurodesk.org/embed/DicompareReportRenderer.js';
+import { DicompareReportRenderer } from '@neurodesk/webapp-components/ui';
 import { ViewerController } from './controllers/ViewerController.js';
 import { InferenceExecutor } from './controllers/InferenceExecutor.js';
-import { ConsoleOutput } from './modules/ui/ConsoleOutput.js';
-import { ProgressManager } from './modules/ui/ProgressManager.js';
-import { ModalManager } from './modules/ui/ModalManager.js';
+import { ConsoleOutput, ProgressManager, ModalManager } from '@neurodesk/webapp-components/ui';
 import * as Config from './app/config.js';
 
 class SeedSegApp {
@@ -27,7 +25,18 @@ class SeedSegApp {
     });
 
     // UI modules
-    this.console = new ConsoleOutput('consoleOutput');
+    // Shared ConsoleOutput themed to reproduce SeedSeg's `console-*` DOM with
+    // plain console.log mirroring.
+    this.console = new ConsoleOutput({
+      outputElementId: 'consoleOutput',
+      lineClass: 'console-line',
+      timeClass: 'console-time',
+      messageClass: 'console-message',
+      separator: ' ',
+      levelOn: 'message',
+      levelClass: (level) => (level === 'info' ? '' : level),
+      mirror: (text) => console.log(text),
+    });
     this.progress = new ProgressManager(Config.PROGRESS_CONFIG);
 
     // State

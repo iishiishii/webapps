@@ -9,16 +9,14 @@ import {
   createNiftiHeaderFromVolume,
   createFloat64Nifti
 } from './modules/file-io/NiftiUtils.js';
-import { ConsoleOutput } from './modules/ui/ConsoleOutput.js';
-import { ModalManager } from './modules/ui/ModalManager.js';
-import { ProgressManager } from './modules/ui/ProgressManager.js';
+import { ModalManager } from '@neurodesk/webapp-components/ui';
 import { LandingPage } from './modules/ui/LandingPage.js';
 import { Tutorial, WelcomePrompt } from './modules/ui/Tutorial.js';
 import { EchoNavigator } from './modules/viewer/EchoNavigator.js';
 import { FileIOController, PipelineExecutor, PipelineSettingsController, MaskController, ViewerController } from './controllers/index.js';
 import { DicomController } from './controllers/DicomController.js';
 import { DicompareController } from 'https://dicompare.neurodesk.org/embed/DicompareController.js';
-import { DicompareReportRenderer } from 'https://dicompare.neurodesk.org/embed/DicompareReportRenderer.js';
+import { DicompareReportRenderer } from '@neurodesk/webapp-components/ui';
 import * as QSMConfig from './app/config.js';
 import { buildConfigJson, maskSectionString } from './modules/ConfigBridge.js';
 

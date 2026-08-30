@@ -41,6 +41,7 @@ apps:
     ci:
       toolchains: [node]
       shared_runtime: true
+      browser_test: true
       release: true
   - id: vesselboost
     path: vesselboost
@@ -60,6 +61,7 @@ apps:
     ci:
       toolchains: [node, rust-wasm]
       shared_runtime: true
+      browser_test: true
       release: true
   - id: spinalcordtoolbox
     path: sct
@@ -79,6 +81,7 @@ apps:
     ci:
       toolchains: [node]
       shared_runtime: true
+      browser_test: true
       release: true
       release_test: test:release
   - id: calmar
@@ -99,6 +102,7 @@ apps:
     ci:
       toolchains: [node]
       shared_runtime: true
+      browser_test: true
       release: true
   - id: qsmbly
     path: qsmbly
@@ -117,7 +121,7 @@ apps:
     shell: static-html
     ci:
       toolchains: [node, rust-wasm]
-      shared_runtime: false
+      shared_runtime: true
       release: true
   - id: seedseg
     path: seedseg
@@ -136,7 +140,7 @@ apps:
     shell: static-html
     ci:
       toolchains: [node]
-      shared_runtime: false
+      shared_runtime: true
       release: true
   - id: dicompare
     path: dicompare
@@ -175,6 +179,7 @@ apps:
     ci:
       toolchains: [node]
       shared_runtime: false
+      browser_test: true
       release: true
   - id: easy-mp2rage
     path: easy-mp2rage
@@ -232,6 +237,7 @@ apps:
     ci:
       toolchains: [node, python-reference]
       shared_runtime: false
+      browser_test: true
       release: true
   - id: browserqc
     path: browserqc
@@ -250,7 +256,8 @@ apps:
     shell: imaging-workspace
     ci:
       toolchains: [node]
-      shared_runtime: true
+      shared_runtime: false
+      browser_test: true
       release: true
   - id: surfannotate
     path: surfannotate
@@ -269,7 +276,8 @@ apps:
     shell: imaging-workspace
     ci:
       toolchains: [node]
-      shared_runtime: true
+      shared_runtime: false
+      browser_test: true
       release: true
   - id: zarro
     path: zarro
@@ -288,5 +296,6 @@ apps:
     shell: imaging-workspace
     ci:
       toolchains: [node]
-      shared_runtime: true
+      shared_runtime: false
+      browser_test: true
       release: true

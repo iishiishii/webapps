@@ -20,8 +20,8 @@ jobs:
     outputs:
       apps: ${{ steps.plan.outputs.apps }}
       has_apps: ${{ steps.plan.outputs.has_apps }}
-      shared_apps: ${{ steps.plan.outputs.shared_apps }}
-      has_shared_apps: ${{ steps.plan.outputs.has_shared_apps }}
+      browser_apps: ${{ steps.plan.outputs.browser_apps }}
+      has_browser_apps: ${{ steps.plan.outputs.has_browser_apps }}
       all_apps: ${{ steps.plan.outputs.all_apps }}
     steps:
       - uses: actions/checkout@v7
@@ -91,7 +91,10 @@ jobs:
 
   composite-site:
     needs: app-plan
-    if: github.event_name != 'pull_request' || needs.app-plan.outputs.all_apps == 'true'
+    # App-scoped changes can break composite assembly (runtime-store rewrites,
+    # artifact budgets), so any PR that selects at least one app runs the
+    # composite checks; only docs-only changes skip them.
+    if: github.event_name != 'pull_request' || needs.app-plan.outputs.has_apps == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -121,13 +124,13 @@ jobs:
       - name: Smoke test every deployed subpath
         run: pnpm test:smoke
 
-  shared-runtime-e2e:
+  browser-e2e:
     needs: app-plan
-    if: needs.app-plan.outputs.has_shared_apps == 'true'
+    if: needs.app-plan.outputs.has_browser_apps == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.app-plan.outputs.shared_apps) }}
+      matrix: ${{ fromJSON(needs.app-plan.outputs.browser_apps) }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -135,7 +138,14 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - uses: actions/setup-python@v7
+        if: matrix.python_reference
+        with:
+          python-version: '3.13'
       - run: pnpm install --frozen-lockfile
+      - name: Install Python reference dependencies
+        if: matrix.python_reference
+        run: pip install -r apps/${{ matrix.app }}/requirements.txt nibabel
       - run: pnpm exec playwright install --with-deps chromium
-      - name: Test shared-runtime integration in ${{ matrix.app }}
+      - name: Test ${{ matrix.app }} in a browser
         run: pnpm --filter ${{ matrix.app }} test:e2e

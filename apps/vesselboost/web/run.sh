@@ -1,21 +1,6 @@
 #!/bin/bash
+# Thin wrapper kept for tooling that runs `bash web/run.sh [port]`; the server
+# itself is the shared scripts/dev-server.mjs.
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PORT="${1:-8080}"
-echo "=== VesselBoost Development Server ==="
-echo "Serving at: http://localhost:$PORT"
-echo "Press Ctrl+C to stop"
-cd "$SCRIPT_DIR"
-
-# Serve with COOP/COEP headers for SharedArrayBuffer (multi-threaded WASM)
-python3 -c "
-import http.server, functools
-
-class CORSHandler(http.server.SimpleHTTPRequestHandler):
-    def end_headers(self):
-        self.send_header('Cross-Origin-Opener-Policy', 'same-origin')
-        self.send_header('Cross-Origin-Embedder-Policy', 'credentialless')
-        super().end_headers()
-
-http.server.HTTPServer(('', $PORT), CORSHandler).serve_forever()
-"
+exec node "$SCRIPT_DIR/../../../scripts/dev-server.mjs" --dir "$SCRIPT_DIR" --port "${1:-8080}"
