@@ -1,5 +1,11 @@
 # zarro
 
+## 0.1.21
+
+### Patch Changes
+
+- Restore every NVSlide pane's field of view and the active export pane from share URLs.
+
 ## 0.1.20
 
 ### Patch Changes

@@ -567,6 +567,7 @@ function defaultShareState(): ShareableViewState {
     showCrosshair: els.showCrosshair.checked,
     showScaleBar: els.showScaleBar.checked,
     showStats: els.showStats.checked,
+    nvSlideNavigation: null,
   }
 }
 
@@ -2356,6 +2357,7 @@ function initControlsFromUrl(): void {
     'crosshairVisible',
     'scaleBar',
     'stats',
+    'nvslide',
   ]
   if (shareKeys.some((key) => params.has(key))) {
     initialSharedSettings = readShareState(params, defaultShareState())
@@ -4214,6 +4216,7 @@ function currentShareState(): ShareableViewState {
     showCrosshair: els.showCrosshair.checked,
     showScaleBar: els.showScaleBar.checked,
     showStats: els.showStats.checked,
+    nvSlideNavigation: nvSlideView?.navigationSnapshot() ?? null,
   }
 }
 
@@ -5422,14 +5425,18 @@ async function main(): Promise<void> {
     maxChunkResidencyBytes: DEFAULT_RESIDENCY_BYTES,
   })
   await nv.attachToCanvas(els.canvas)
-  nvSlideView = mountNvSlideView(els.nvslideView, {
-    onCrosshairChange: applyNvSlideCrosshair,
-    onMeasurementCreate: addNvSlideMeasurement,
-    onMeasurementRemove: removeNvSlideMeasurement,
-    onActivePaneChange: () => {
-      syncDownloadControl()
+  nvSlideView = mountNvSlideView(
+    els.nvslideView,
+    {
+      onCrosshairChange: applyNvSlideCrosshair,
+      onMeasurementCreate: addNvSlideMeasurement,
+      onMeasurementRemove: removeNvSlideMeasurement,
+      onActivePaneChange: () => {
+        syncDownloadControl()
+      },
     },
-  })
+    initialSharedSettings?.nvSlideNavigation ?? null,
+  )
   syncNvSlideView()
   syncCrosshairVisibility()
   els.canvas.addEventListener('pointerdown', () => {

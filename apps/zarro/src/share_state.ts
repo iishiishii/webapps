@@ -1,4 +1,9 @@
 import { isLayoutId } from './viewer_layout.ts'
+import {
+  parseNvSlideShareSnapshot,
+  stringifyNvSlideShareSnapshot,
+  type NvSlideShareSnapshotV1,
+} from './nvslide_share_state.ts'
 
 export interface ShareableViewState {
   layout: number
@@ -16,6 +21,7 @@ export interface ShareableViewState {
   showCrosshair: boolean
   showScaleBar: boolean
   showStats: boolean
+  nvSlideNavigation: NvSlideShareSnapshotV1 | null
 }
 
 function finiteNumber(value: string | null): number | null {
@@ -52,6 +58,14 @@ export function writeShareState(url: URL, state: ShareableViewState): URL {
   url.searchParams.set('crosshairVisible', state.showCrosshair ? '1' : '0')
   url.searchParams.set('scaleBar', state.showScaleBar ? '1' : '0')
   url.searchParams.set('stats', state.showStats ? '1' : '0')
+  if (state.nvSlideNavigation) {
+    url.searchParams.set(
+      'nvslide',
+      stringifyNvSlideShareSnapshot(state.nvSlideNavigation),
+    )
+  } else {
+    url.searchParams.delete('nvslide')
+  }
   return url
 }
 
@@ -114,5 +128,6 @@ export function readShareState(
         : params.get('scaleBar') !== '0',
     showStats:
       params.get('stats') === null ? defaults.showStats : params.get('stats') !== '0',
+    nvSlideNavigation: parseNvSlideShareSnapshot(params.get('nvslide')),
   }
 }

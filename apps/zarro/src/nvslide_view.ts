@@ -28,6 +28,7 @@ import {
   type NvSlideFraming,
   type NvSlideFramingSpace,
 } from './nvslide_viewport.ts'
+import type { NvSlideShareSnapshotV1 } from './nvslide_share_state.ts'
 
 export type Fraction3 = readonly [number, number, number]
 
@@ -78,6 +79,7 @@ export interface NvSlideViewEvents {
 export interface NvSlideViewHandle {
   update(state: NvSlideViewState): void
   activePaneView(): NvSlidePaneView | null
+  navigationSnapshot(): NvSlideShareSnapshotV1 | null
   dispose(): void
 }
 
@@ -212,10 +214,11 @@ const sameCrosshair = (left: Fraction3, right: Fraction3): boolean =>
 export const mountNvSlideView = (
   root: HTMLElement,
   events: NvSlideViewEvents,
+  initialNavigation: NvSlideShareSnapshotV1 | null = null,
 ): NvSlideViewHandle => {
   let state: NvSlideViewState = { kind: 'hidden' }
   let disposed = false
-  let activePlane: VolumePlane = 'axial'
+  let activePlane: VolumePlane = initialNavigation?.activePlane ?? 'axial'
 
   const panes: PaneRuntime[] = (['axial', 'sagittal', 'coronal'] as const).map(
     (plane): PaneRuntime => {
@@ -258,7 +261,7 @@ export const mountNvSlideView = (
         source: null,
         slide: null,
         identity: null,
-        retainedFraming: null,
+        retainedFraming: initialNavigation?.framings[plane] ?? null,
         frame: 0,
         generation: 0,
         pointer: null,
@@ -297,6 +300,24 @@ export const mountNvSlideView = (
   const activePaneView = (): NvSlidePaneView | null => {
     const pane = panes.find(({ definition }) => definition.plane === activePlane)
     return pane ? paneViewFor(pane) : null
+  }
+
+  const navigationSnapshot = (): NvSlideShareSnapshotV1 | null => {
+    const framings = panes.map((pane) =>
+      pane.slide
+        ? captureNvSlideFraming(
+            pane.slide.viewport,
+            framingSpaceFor(pane.slide, screenFor(pane.canvas)),
+          )
+        : pane.retainedFraming,
+    )
+    const [axial, sagittal, coronal] = framings
+    if (!axial || !sagittal || !coronal) return null
+    return {
+      version: 1,
+      activePlane,
+      framings: { axial, sagittal, coronal },
+    }
   }
 
   const notifyActivePaneChange = (): void => {
@@ -1009,6 +1030,7 @@ export const mountNvSlideView = (
   return {
     update,
     activePaneView,
+    navigationSnapshot,
     dispose: () => {
       if (disposed) return
       disposed = true

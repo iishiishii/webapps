@@ -1490,11 +1490,30 @@ test("generic uint16 share contrast is replaced from streamed signal", async ({ 
   await page.mouse.up();
   await expect.poll(async () => (await niftiEstimate(page)).shape)
     .not.toEqual([32, 32, 32]);
-  const framedExport = await niftiEstimate(page);
   const paneFraming = await page.locator('.nvslide-pane').evaluateAll(
     (panes) => panes.map((pane) => pane.dataset.framing),
   );
   expect(paneFraming.every(Boolean)).toBe(true);
+
+  await page.locator('[data-plane="coronal"] canvas').focus();
+  await expect(page.locator('[data-plane="coronal"]')).toHaveAttribute(
+    "data-active",
+    "true",
+  );
+  const sharedExport = await niftiEstimate(page);
+  await page.locator("#copyShareLink").click();
+  const sharedUrl = page.url();
+  expect(new URL(sharedUrl).searchParams.has("nvslide")).toBe(true);
+  await page.goto(sharedUrl);
+  await expect.poll(async () => page.locator('.nvslide-pane').evaluateAll(
+    (panes) => panes.map((pane) => pane.dataset.framing),
+  )).toEqual(paneFraming);
+  await expect(page.locator('[data-plane="coronal"]')).toHaveAttribute(
+    "data-active",
+    "true",
+  );
+  await expect.poll(async () => (await niftiEstimate(page)).shape)
+    .toEqual(sharedExport.shape);
 
   await page.getByRole("button", { name: "New stain layer" }).click();
   await page.getByLabel("Stain name").fill("Second");
@@ -1507,7 +1526,7 @@ test("generic uint16 share contrast is replaced from streamed signal", async ({ 
       ?.split(",").filter(Boolean).length ?? 0
   ), { timeout: 30_000 }).toBe(2);
   await expect.poll(async () => (await niftiEstimate(page)).shape)
-    .toEqual(framedExport.shape);
+    .toEqual(sharedExport.shape);
   await expect.poll(async () => page.locator('.nvslide-pane').evaluateAll(
     (panes) => panes.map((pane) => pane.dataset.framing),
   )).toEqual(paneFraming);
@@ -1517,7 +1536,7 @@ test("generic uint16 share contrast is replaced from streamed signal", async ({ 
   await firstStain.click();
   await expect(firstStain).toHaveAttribute("aria-pressed", "true");
   await expect.poll(async () => (await niftiEstimate(page)).shape)
-    .toEqual(framedExport.shape);
+    .toEqual(sharedExport.shape);
   await expect.poll(async () => page.locator('.nvslide-pane').evaluateAll(
     (panes) => panes.map((pane) => pane.dataset.framing),
   )).toEqual(paneFraming);

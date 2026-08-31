@@ -18,6 +18,15 @@ const state = {
   showCrosshair: false,
   showScaleBar: true,
   showStats: true,
+  nvSlideNavigation: {
+    version: 1,
+    activePlane: 'coronal',
+    framings: {
+      axial: { centerU: 0.22, centerV: 0.71, zoomOverFit: 6 },
+      sagittal: { centerU: 0.4, centerV: 0.3, zoomOverFit: 2.5 },
+      coronal: { centerU: 0.61, centerV: 0.39, zoomOverFit: 3.2 },
+    },
+  },
 }
 
 test('round-trips viewer settings through a share URL', () => {
@@ -29,13 +38,52 @@ test('round-trips viewer settings through a share URL', () => {
   assert.equal(url.searchParams.get('scrollZoomSpeed'), '5')
   assert.equal(url.searchParams.get('detailBudget'), '8')
   assert.equal(url.searchParams.get('layout'), '31')
+  assert.equal(
+    url.searchParams.get('nvslide'),
+    JSON.stringify(state.nvSlideNavigation),
+  )
   assert.equal(url.searchParams.has('equalViews'), false)
   assert.deepEqual(readShareState(url.searchParams, state), state)
 })
 
+test('restores old links without NVSlide navigation state', () => {
+  const defaults = { ...state, nvSlideNavigation: null }
+  const restored = readShareState(new URLSearchParams('layout=34'), defaults)
+
+  assert.equal(restored.nvSlideNavigation, null)
+})
+
+test('ignores malformed and unsupported NVSlide navigation state', () => {
+  const defaults = { ...state, nvSlideNavigation: null }
+  const malformed = [
+    '{',
+    JSON.stringify({ ...state.nvSlideNavigation, version: 2 }),
+    JSON.stringify({
+      ...state.nvSlideNavigation,
+      framings: {
+        ...state.nvSlideNavigation.framings,
+        axial: { centerU: 0.2, centerV: 0.4, zoomOverFit: 0 },
+      },
+    }),
+    JSON.stringify({
+      version: 1,
+      activePlane: 'axial',
+      framings: { axial: state.nvSlideNavigation.framings.axial },
+    }),
+  ]
+
+  for (const nvslide of malformed) {
+    const params = new URLSearchParams({ layout: '34', nvslide })
+    assert.equal(readShareState(params, defaults).nvSlideNavigation, null)
+  }
+})
+
 test('ignores invalid shared camera and detail budget values', () => {
   const params = new URLSearchParams('layout=99&zoom=nope&pan=1,2&detailBudget=99')
-  assert.deepEqual(readShareState(params, state), state)
+  assert.deepEqual(readShareState(params, state), {
+    ...state,
+    nvSlideNavigation: null,
+  })
 })
 
 test('maps legacy multiplanar links onto the new layout presets', () => {
