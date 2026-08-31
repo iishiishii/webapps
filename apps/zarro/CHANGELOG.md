@@ -1,5 +1,11 @@
 # zarro
 
+## 0.1.20
+
+### Patch Changes
+
+- cd790d5: Finish shared imaging convergence by centralizing worker sessions, input handling, app-specific controllers, workspace styles, and runtime clients. Strengthen shell contracts and regression coverage.
+
 ## 0.1.19
 
 ### Patch Changes

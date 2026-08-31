@@ -1,5 +1,11 @@
 # dicom2vid
 
+## 0.1.7
+
+### Patch Changes
+
+- cd790d5: Finish shared imaging convergence by centralizing worker sessions, input handling, app-specific controllers, workspace styles, and runtime clients. Strengthen shell contracts and regression coverage.
+
 ## 0.1.6
 
 ### Patch Changes
