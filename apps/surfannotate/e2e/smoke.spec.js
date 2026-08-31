@@ -74,6 +74,7 @@ test('the hosted dark theme keeps upload states and information links readable',
   await page.addStyleTag({ path: SHARED_THEME });
   await page.evaluate(() => {
     document.documentElement.dataset.neurodeskApp = 'surfannotate';
+    document.documentElement.dataset.neurodeskShell = 'static-html';
     document.documentElement.dataset.neurodeskTheme = 'dark';
 
     const dialog = document.createElement('dialog');
