@@ -4,8 +4,8 @@
  * Main application class. Orchestrates controllers, viewer, and inference.
  */
 
-import { FileIOController } from './controllers/FileIOController.js';
-import { DicomController } from './controllers/DicomController.js';
+import { SeedSegInputSet } from './controllers/SeedSegInputSet.js';
+import { SeedSegDicomInput } from './controllers/SeedSegDicomInput.js';
 import { DicompareController } from 'https://dicompare.neurodesk.org/embed/DicompareController.js';
 import { DicompareReportRenderer } from '@neurodesk/webapp-components/ui';
 import { ViewerController } from '@neurodesk/webapp-components';
@@ -58,12 +58,12 @@ class SeedSegApp {
     if (aboutVersionEl) aboutVersionEl.textContent = `v${Config.VERSION}`;
 
     // Controllers
-    this.fileIOController = new FileIOController({
+    this.fileIOController = new SeedSegInputSet({
       updateOutput: (msg) => this.updateOutput(msg),
       onFileLoaded: (file) => this.onFileLoaded(file)
     });
 
-    this.dicomController = new DicomController({
+    this.dicomController = new SeedSegDicomInput({
       updateOutput: (msg) => this.updateOutput(msg),
       onConversionComplete: (niftiFiles) => this._onDicomConversionComplete(niftiFiles),
       onFilesRetained: (files) => this._onDicomFilesRetained(files)

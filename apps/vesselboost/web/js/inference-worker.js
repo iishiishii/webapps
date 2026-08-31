@@ -11,13 +11,11 @@
  */
 
 import * as ort from '../wasm/ort.webgpu.bundle.min.mjs';
-import { createWorkerEmitter, fetchModel as fetchModelAsset, installWorkerRouter, localForageCache } from '../vendor/webapp-components/src/worker/index.js';
+import { createWorkerEmitter, fetchModel as fetchModelAsset, getOptimalWasmThreads, installWorkerRouter, localForageCache, prepareRasWorkerInput } from '../vendor/webapp-components/src/worker/index.js';
 import { createNiftiFromData, parseNiftiVolume } from '../vendor/webapp-components/src/file-io/NiftiUtils.js';
 import { keepLargestComponentAndFill, removeSmallComponents } from '../vendor/webapp-components/src/volume/connectedComponents.js';
 import {
-  getOrientationTransform,
   inverseOrient,
-  orientToRAS,
   resampleLabelsNearest,
   resampleVolume,
 } from '../vendor/webapp-components/src/volume/geometry.js';
@@ -427,105 +425,32 @@ async function initWasmPreprocessing() {
 
 // ==================== Utility ====================
 
-function getOptimalWasmThreads() {
-  return (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4;
-}
 
 // ==================== Step Functions ====================
 
-function loadStateFromInput(inputData, { emitUpdates = false } = {}) {
+function prepareInputState(inputData, { emitUpdates = false } = {}) {
   if (emitUpdates) {
     postLog('Parsing input volume...');
     postProgress(0.02, 'Reading NIfTI...');
   }
-
-  const { imageData, dims, voxelSize, headerBytes, affine } = parseNiftiInput(inputData);
-  const [nx, ny, nz] = dims;
+  const prepared = prepareRasWorkerInput(parseNiftiInput(inputData));
+  Object.assign(workerState, prepared);
   if (emitUpdates) {
-    postLog(`Volume: ${nx}x${ny}x${nz}, spacing: ${voxelSize.map(v => v.toFixed(3)).join('x')}mm`);
+    postLog(`Volume: ${prepared.origDims.join('x')}, spacing: ${prepared.rasSpacing.map(value => value.toFixed(3)).join('x')}mm`);
+    postLog(`RAS dims: ${prepared.rasDims.join('x')}`);
   }
 
-  workerState.origDims = [...dims];
-  workerState.affine = affine;
-  workerState.headerBytes = headerBytes;
-
-  // Orient to RAS
-  if (emitUpdates) {
-    postProgress(0.04, 'Orienting to RAS...');
-    postLog('Orienting to RAS...');
-  }
-  const { perm, flip } = getOrientationTransform(affine);
-  const isIdentity = perm[0] === 0 && perm[1] === 1 && perm[2] === 2 && !flip[0] && !flip[1] && !flip[2];
-
-  workerState.perm = perm;
-  workerState.flip = flip;
-  workerState.isIdentity = isIdentity;
-
-  if (isIdentity) {
-    workerState.origHeaderBytes = headerBytes.slice(0);
-    workerState.rasData = imageData;
-    workerState.rasDims = [...dims];
-    workerState.rasSpacing = [...voxelSize];
-  } else {
-    workerState.origHeaderBytes = headerBytes.slice(0);
-
-    const oriented = orientToRAS(imageData, dims, perm, flip);
-    workerState.rasData = oriented.data;
-    workerState.rasDims = oriented.dims;
-    workerState.rasSpacing = [voxelSize[perm[0]], voxelSize[perm[1]], voxelSize[perm[2]]];
-
-    // Rewrite headerBytes sform to match the RAS-reoriented data
-    const srcVoxel = [0, 0, 0];
-    for (let i = 0; i < 3; i++) {
-      srcVoxel[perm[i]] = flip[i] ? (workerState.rasDims[i] - 1) : 0;
-    }
-    const origin = [0, 0, 0];
-    for (let r = 0; r < 3; r++) {
-      origin[r] = affine[r][0] * srcVoxel[0]
-                + affine[r][1] * srcVoxel[1]
-                + affine[r][2] * srcVoxel[2]
-                + affine[r][3];
-    }
-
-    const hdrView = new DataView(headerBytes);
-    hdrView.setInt16(254, 1, true);
-    hdrView.setFloat32(280, workerState.rasSpacing[0], true);
-    hdrView.setFloat32(284, 0, true);
-    hdrView.setFloat32(288, 0, true);
-    hdrView.setFloat32(292, origin[0], true);
-    hdrView.setFloat32(296, 0, true);
-    hdrView.setFloat32(300, workerState.rasSpacing[1], true);
-    hdrView.setFloat32(304, 0, true);
-    hdrView.setFloat32(308, origin[1], true);
-    hdrView.setFloat32(312, 0, true);
-    hdrView.setFloat32(316, 0, true);
-    hdrView.setFloat32(320, workerState.rasSpacing[2], true);
-    hdrView.setFloat32(324, origin[2], true);
-    hdrView.setInt16(252, 0, true);
-  }
-  if (emitUpdates) {
-    postLog(`RAS dims: ${workerState.rasDims.join('x')}`);
-  }
-  workerState.nativeRasSpacing = [...workerState.rasSpacing];
-
-  // Clear downstream state
+  workerState.nativeRasSpacing = [...prepared.rasSpacing];
   workerState.brainMask = null;
   workerState.preBETMask = null;
   workerState.denoisedData = null;
   workerState.preDenoiseData = null;
   workerState.segLabelsRAS = null;
   workerState.segMinComponentSize = 10;
-
-  // Post volume info for UI
-  postVolumeInfo({
-    rasDims: [...workerState.rasDims],
-    rasSpacing: [...workerState.rasSpacing],
-    totalSlices: workerState.rasDims[2]
-  });
+  postVolumeInfo({ rasDims: [...prepared.rasDims], rasSpacing: [...prepared.rasSpacing], totalSlices: prepared.rasDims[2] });
 }
-
 function stepLoad(inputData) {
-  loadStateFromInput(inputData, { emitUpdates: true });
+  prepareInputState(inputData, { emitUpdates: true });
 
   postProgress(1.0, 'Volume loaded');
   postStepComplete('load');
@@ -636,7 +561,7 @@ function stepDownsample(factor) {
 
 async function restoreWorkerState(data) {
   resetState();
-  loadStateFromInput(data.inputData, { emitUpdates: false });
+  prepareInputState(data.inputData, { emitUpdates: false });
 
   if (data.downsampleResultData) {
     const restoredDownsample = parseNiftiInput(data.downsampleResultData);
@@ -1561,7 +1486,7 @@ installWorkerRouter({
 
     case 'downsample-from-input':
       try {
-        loadStateFromInput(data.inputData, { emitUpdates: false });
+        prepareInputState(data.inputData, { emitUpdates: false });
         stepDownsample(data.factor);
       } catch (error) {
         console.error('Downsample error:', error);
@@ -1571,7 +1496,7 @@ installWorkerRouter({
 
     case 'skip-downsample':
       if (data?.inputData) {
-        loadStateFromInput(data.inputData, { emitUpdates: false });
+        prepareInputState(data.inputData, { emitUpdates: false });
         workerState.preDownsampleData = null;
         workerState.preDownsampleDims = null;
         workerState.preDownsampleSpacing = null;

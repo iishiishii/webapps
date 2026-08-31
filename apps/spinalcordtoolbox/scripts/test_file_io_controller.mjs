@@ -72,7 +72,7 @@ function makeFile(name) {
 
 const elements = installFakeDom();
 
-const { FileIOController } = await import('../web/js/controllers/FileIOController.js');
+const { SctInputSessions: FileIOController } = await import('../web/js/controllers/SctInputSessions.js');
 
 // Test 1: NIfTI single-file path
 {

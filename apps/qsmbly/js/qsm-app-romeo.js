@@ -1,5 +1,5 @@
 // Import extracted utility modules
-import { createThresholdMask } from './modules/mask/ThresholdUtils.js';
+import { createThresholdMask } from '@neurodesk/webapp-components/volume';
 import {
   parseNiftiHeader,
   isGzipped,
@@ -13,9 +13,8 @@ import {
 import { ModalManager } from '@neurodesk/webapp-components/ui';
 import { LandingPage } from './modules/ui/LandingPage.js';
 import { Tutorial, WelcomePrompt } from './modules/ui/Tutorial.js';
-import { EchoNavigator } from './modules/viewer/EchoNavigator.js';
-import { FileIOController, PipelineExecutor, PipelineSettingsController, MaskController, ViewerController } from './controllers/index.js';
-import { DicomController } from './controllers/DicomController.js';
+import { QsmInputSet, QsmPipelineController, PipelineSettingsController, MaskController, ViewerController } from './controllers/index.js';
+import { QsmDicomInput } from './controllers/QsmDicomInput.js';
 import { DicompareController } from 'https://dicompare.neurodesk.org/embed/DicompareController.js';
 import { DicompareReportRenderer } from '@neurodesk/webapp-components/ui';
 import * as QSMConfig from './app/config.js';
@@ -115,13 +114,9 @@ class QSMApp {
     this.init();
   }
 
-  // Getters for backward compatibility - delegates to PipelineExecutor
+  // App-level state delegates to the QSM pipeline controller.
   get pipelineRunning() {
     return this.pipelineExecutor?.isRunning() || false;
-  }
-
-  get worker() {
-    return this.pipelineExecutor?.getWorker() || null;
   }
 
   get workerReady() {
@@ -152,7 +147,7 @@ class QSMApp {
     this._setupOnboarding();
 
     // Initialize FileIOController first (other controllers depend on it)
-    this.fileIOController = new FileIOController({
+    this.fileIOController = new QsmInputSet({
       updateOutput: (msg) => this.updateOutput(msg),
       onFilesChanged: () => this._onBucketsChanged(),
       onMagnitudeFilesChanged: (files) => this._onMagnitudeFilesChanged(files),
@@ -185,7 +180,7 @@ class QSMApp {
     }
 
     // Initialize pipeline executor (before mask controller, provides worker)
-    this.pipelineExecutor = new PipelineExecutor({
+    this.pipelineExecutor = new QsmPipelineController({
       updateOutput: (msg) => this.updateOutput(msg),
       setProgress: (val, text) => this.setProgress(val, text),
       onStageData: (data) => this._onStageData(data),
@@ -197,7 +192,7 @@ class QSMApp {
     // Initialize mask controller
     this.maskController = new MaskController({
       nv: this.nv,
-      getWorker: () => this.pipelineExecutor?.getWorker(),
+      getWorker: () => this.pipelineExecutor?.getChannel(),
       updateOutput: (msg) => this.updateOutput(msg),
       setProgress: (val, text) => this.setProgress(val, text),
       initializeWorker: () => this.pipelineExecutor?.initialize(),
@@ -221,7 +216,7 @@ class QSMApp {
     this.dicompareRenderer = new DicompareReportRenderer();
 
     // Initialize DICOM controller
-    this.dicomController = new DicomController({
+    this.dicomController = new QsmDicomInput({
       updateOutput: (msg) => this.updateOutput(msg),
       onConversionComplete: (classified) => this._onDicomConversionComplete(classified),
       onFilesRetained: (files) => this._onDicomFilesRetained(files)
@@ -2982,7 +2977,7 @@ class QSMApp {
 
   /**
    * Auto-detect optimal threshold using Otsu's method and set the slider
-   * Delegates computation to imported ThresholdUtils module
+   * Delegates computation to the shared volume threshold utility.
    */
   /**
    * Auto-detect optimal threshold using Otsu's method
@@ -3224,19 +3219,15 @@ class QSMApp {
         : null;
 
       await this.pipelineExecutor.initialize();
-      this.pipelineExecutor.pipelineRunning = true;
       this.updateOutput("Starting SWI pipeline...");
 
-      this.pipelineExecutor.getWorker().postMessage({
-        type: 'runSWI',
-        data: {
+      this.pipelineExecutor.runSpecial('runSWI', {
           magnitudeBuffers,
           phaseBuffers,
           maskThreshold: this.maskThreshold,
           customMaskBuffer,
           preparedMagnitude,
           pipelineSettings: this.pipelineSettings
-        }
       });
 
       document.getElementById('cancelPipeline').disabled = false;
@@ -3286,18 +3277,14 @@ class QSMApp {
         : null;
 
       await this.pipelineExecutor.initialize();
-      this.pipelineExecutor.pipelineRunning = true;
       this.updateOutput("Starting T2*/R2* mapping...");
 
-      this.pipelineExecutor.getWorker().postMessage({
-        type: 'runT2starR2star',
-        data: {
+      this.pipelineExecutor.runSpecial('runT2starR2star', {
           magnitudeBuffers,
           maskThreshold: this.maskThreshold,
           customMaskBuffer,
           preparedMagnitude,
           echoTimes
-        }
       });
 
       document.getElementById('cancelPipeline').disabled = false;
@@ -3383,26 +3370,24 @@ class QSMApp {
     this.commandPreviewModal?.open();
 
     // Ask worker to generate command and methods via WASM
-    const worker = this.pipelineExecutor?.worker;
-    if (!worker) { if (cmdEl) cmdEl.textContent = 'ERROR: Worker not available'; return; }
+    if (!this.pipelineExecutor?.isReady()) { if (cmdEl) cmdEl.textContent = 'ERROR: Worker not available'; return; }
 
     const maskSection = maskSectionString(this.maskOpsHistory, maskSource);
-    const handler = (e) => {
-      if (e.data.type === 'commandResult') {
-        if (cmdEl) cmdEl.textContent = e.data.result;
-      } else if (e.data.type === 'methodsResult') {
-        const raw = e.data.result;
+    const unsubscribe = this.pipelineExecutor.subscribe((message) => {
+      if (message.type === 'commandResult') {
+        if (cmdEl) cmdEl.textContent = message.result;
+      } else if (message.type === 'methodsResult') {
+        const raw = message.result;
         if (methodsRaw) methodsRaw.textContent = raw;
         if (methodsRendered) methodsRendered.innerHTML = renderMarkdown(raw);
-      } else if (e.data.type === 'configTomlResult') {
-        this._lastToml = e.data.result; // last message back — safe to detach
-        worker.removeEventListener('message', handler);
+      } else if (message.type === 'configTomlResult') {
+        this._lastToml = message.result;
+        unsubscribe();
       }
-    };
-    worker.addEventListener('message', handler);
-    worker.postMessage({ type: 'generateCommand', data: { configJson, maskSection } });
-    worker.postMessage({ type: 'generateMethods', data: { configJson, maskSection } });
-    worker.postMessage({ type: 'generateConfigToml', data: { configJson, maskSection } });
+    });
+    this.pipelineExecutor.send('generateCommand', { configJson, maskSection });
+    this.pipelineExecutor.send('generateMethods', { configJson, maskSection });
+    this.pipelineExecutor.send('generateConfigToml', { configJson, maskSection });
   }
 
   switchExportTab(tab) {

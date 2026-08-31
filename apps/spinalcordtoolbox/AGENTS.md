@@ -33,7 +33,7 @@ Common issues it catches:
 - `web/js/app/sct-tasks.js` — SCT stable task inventory and task status helpers
 - `web/js/app/labels.js` — Task labels + NiiVue colormap
 - `web/js/inference-worker.js` runs the 3D inference pipeline as a module worker and uses the shared worker toolkit for routing, model fetches, and common volume operations.
-- `web/js/controllers/` contains FileIO and DICOM controllers plus narrow pipeline adapters around the shared `PipelineExecutor` and `ViewerController`.
+- `web/js/controllers/` contains narrow input-session and pipeline adapters around shared file-IO, DICOM, `PipelineExecutor`, and `ViewerController` modules.
 - `web/js/modules/` — UI components and inference pipeline modules
 
 ## Key Conventions
@@ -45,7 +45,7 @@ Common issues it catches:
 - Keep `.viewer-unavailable-message[hidden]` explicitly hidden in CSS. The fallback message is absolutely positioned over the canvas, and the base `.viewer-unavailable-message` display rule otherwise overrides the hidden attribute and paints the error text over a working NiiVue viewer. `npm run test:ui` covers this.
 - `web/coi-serviceworker.js` must always resolve fetch events with a `Response`, including third-party analytics/CORS failures, and must reconstruct 204/205/304 responses with a null body. `npm run test:compat` covers the Chrome Response-constructor regressions.
 - Route input/segmentation visibility changes through `renderViewerVolumes()` so the Results eye buttons and toolbar input toggle rebuild a consistent NiiVue volume stack.
-- Multi-image comparison keeps one active input session for SCT processing while `Compare` view displays loaded input sessions as independent NiiVue canvases for side-by-side review. Keep `FileIOController` session activation, `ViewerController.loadComparisonVolumes()`, the viewer mode toolbar, and `scripts/test_ui_coverage.cjs` synchronized; result overlays remain single-session only and `npm run test:viewer`, `npm run test:controllers`, and `npm run test:ui` cover the contract.
+- Multi-image comparison keeps one active input session for SCT processing while `Compare` view displays loaded input sessions as independent NiiVue canvases for side-by-side review. Keep `SctInputSessions` session activation, `ViewerController.loadComparisonVolumes()`, the viewer mode toolbar, and `scripts/test_ui_coverage.cjs` synchronized; result overlays remain single-session only and `npm run test:viewer`, `npm run test:controllers`, and `npm run test:ui` cover the contract.
 - Config version is bumped by the manual GitHub Actions release workflow via `sed`; it increments the patch version — do not bump manually
 - Keep model availability metadata internal; user-facing UI copy should describe runnable tasks without release/support commentary.
 - Keep the Citations modal primary SpinalCordToolbox entry anchored on the De Leener et al. NeuroImage 2017 SCT paper and the stable documentation link.
@@ -102,7 +102,7 @@ Common issues it catches:
 | `npm run test:fixtures` | Dice + foreground-ratio gates for segmentation fixtures, multilabel vertebrae parity, SCIsegV2 `_sc_seg`/`_lesion_seg` parity on SCT `t2_fake_lesion`, and lesion-metrics fixture tolerances; downloads missing SCT batch references from Hugging Face and SCT testing data and generates missing/stale browser outputs with real ONNX inference |
 | `npm run test:fixtures:download` | Downloads `test_data/batch_processing.sh` plus fixture `input.nii.gz` and `batch_output.nii.gz` files from Hugging Face |
 | `npm run test:fixtures:generate` | Regenerates `browser_output.nii.gz` by running real ONNX inference (Node-only, no browser) |
-| `npm run test:controllers` | `FileIOController`, `DicomController`, and the shared `PipelineExecutor` adapter against fake DOM and Worker implementations |
+| `npm run test:controllers` | `SctInputSessions`, the shared DICOM input adapter, and the shared `PipelineExecutor` adapter against fake DOM and Worker implementations |
 | `npm run test:ui:modules` | `ProgressManager`, `ConsoleOutput`, `ModalManager`, and fallback NIfTI preview against fake DOM |
 | `npm run test:ci-summary` | Full-test workflow log summarizer used to publish failed npm script/test details in GitHub Actions summaries |
 | `npm run test:inference:e2e` | Inference worker driven via VM shim against 3 fixtures with real ONNX Runtime (slow) |

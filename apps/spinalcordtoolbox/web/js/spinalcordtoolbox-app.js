@@ -5,7 +5,7 @@
  * Pipeline is split into interactive steps that the user runs sequentially.
  */
 
-import { FileIOController } from './controllers/FileIOController.js';
+import { SctInputSessions } from './controllers/SctInputSessions.js';
 import { ViewerController } from '@neurodesk/webapp-components';
 import { SctPipeline } from './controllers/SctPipeline.js';
 import { ConsoleOutput, bindWindowControls } from '@neurodesk/webapp-components/ui';
@@ -89,7 +89,7 @@ export class SpinalCordToolboxApp {
     if (aboutVersionEl) aboutVersionEl.textContent = `v${Config.VERSION}`;
 
     // Controllers
-    this.fileIOController = new FileIOController({
+    this.fileIOController = new SctInputSessions({
       updateOutput: (msg) => this.updateOutput(msg),
       onFileLoaded: (file, context) => this.onFileLoaded(file, context),
       onFilesCleared: () => {

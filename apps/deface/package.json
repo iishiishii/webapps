@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@neurodesk/webapp-components": "workspace:*",
+    "@neurodesk/runtime-support": "workspace:*",
     "@niivue/dcm2niix": "^1.2.0",
     "@niivue/niivue": "1.0.0-rc.9",
     "gl-matrix": "^3.4.4"

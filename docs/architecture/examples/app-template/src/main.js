@@ -1,4 +1,4 @@
-import "@neurodesk/webapp-components/styles/base.css";
+import "@neurodesk/webapp-components/styles/imaging-workspace.css";
 import { mountImagingWorkspace } from "@neurodesk/webapp-components/core/mount-imaging-workspace";
 import { ConsoleOutput, ProgressManager } from "@neurodesk/webapp-components/ui";
 import { APP } from "./config.js";

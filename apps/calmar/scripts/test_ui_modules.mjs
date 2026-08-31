@@ -92,7 +92,7 @@ function setupDom(elementsById = {}) {
 {
   const consoleEl = makeFakeElement('consoleOutput');
   setupDom({ consoleOutput: consoleEl });
-  const { ConsoleOutput } = await import(path.join(ROOT, 'web/js/modules/ui/ConsoleOutput.js'));
+  const { CalmarConsoleOutput: ConsoleOutput } = await import(path.join(ROOT, 'web/js/modules/ui/CalmarConsoleOutput.js'));
 
   const co = new ConsoleOutput('consoleOutput');
   co.log('first message');

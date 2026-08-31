@@ -5,8 +5,8 @@
  */
 
 import './label-codec.js';
-import { FileIOController } from './controllers/FileIOController.js';
-import { DicomController } from './controllers/DicomController.js';
+import { MuscleMapInputSet } from './controllers/MuscleMapInputSet.js';
+import { MuscleMapDicomInput } from './controllers/MuscleMapDicomInput.js';
 import { MuscleMapViewer } from './controllers/MuscleMapViewer.js';
 import { MuscleMapPipeline } from './controllers/MuscleMapPipeline.js';
 import { ConsoleOutput, bindWindowControls } from '@neurodesk/webapp-components/ui';
@@ -14,7 +14,7 @@ import { ProgressManager } from '@neurodesk/webapp-components/ui';
 import { ModalManager } from '@neurodesk/webapp-components/ui';
 import { createNiftiFromVolume, downloadBlob } from '@neurodesk/webapp-components/file-io';
 import { MuscleLegend } from './modules/ui/MuscleLegend.js';
-import { MetricsSummary } from './modules/ui/MetricsSummary.js';
+import { MuscleMapMetricsPanel } from './modules/ui/MuscleMapMetricsPanel.js';
 import { FallbackNiftiPreview } from './modules/fallback-nifti-preview.js';
 import * as Config from './app/config.js';
 import { generateNiivueColormap, getLabelName, getLabelColor, getMuscleLabels, getLabelsForModel, getLabelsForLabelSpace } from './app/labels.js';
@@ -55,7 +55,7 @@ class MuscleMapApp {
     });
     this.progress = new ProgressManager(Config.PROGRESS_CONFIG);
     this.muscleLegend = new MuscleLegend('muscleLegend');
-    this.metricsSummary = new MetricsSummary('metricsSummary');
+    this.metricsSummary = new MuscleMapMetricsPanel('metricsSummary');
 
     // State
     this.inputFile = null;
@@ -121,14 +121,14 @@ class MuscleMapApp {
     if (overlapSelect) overlapSelect.value = String(Config.MODELS[0].preprocessing.overlapDefault);
 
     // Controllers
-    this.dicomController = new DicomController({
+    this.dicomController = new MuscleMapDicomInput({
       updateOutput: (msg) => this.updateOutput(msg),
       onConversionComplete: (files) => {
         this.fileIOController.setFiles(files);
       }
     });
 
-    this.fileIOController = new FileIOController({
+    this.fileIOController = new MuscleMapInputSet({
       updateOutput: (msg) => this.updateOutput(msg),
       onFileLoaded: (file) => this.onFileLoaded(file),
       onViewFile: (file) => this.onFileLoaded(file),
@@ -490,7 +490,7 @@ class MuscleMapApp {
       zone.classList.remove('dragover');
 
       const files = Array.from(e.dataTransfer.files);
-      const hasNifti = files.some(f => FileIOController.isNiftiFile(f));
+      const hasNifti = files.some(f => MuscleMapInputSet.isNiftiFile(f));
 
       if (hasNifti) {
         this.fileIOController.handleDroppedFiles(files);

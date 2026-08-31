@@ -10,7 +10,7 @@
 //   - localforage dropped, Cache Storage used instead
 //   - 'run-synthstrip' op is dispatched, calls stepSynthStrip -> runSynthStrip
 //   - inference-pipeline.js is a real ES module
-//   - InferenceExecutor spawns the worker with { type: 'module' }
+//   - CalmarPipeline configures PipelineExecutor with { type: 'module' }
 //
 // End-to-end validation happens in the 2a.1.4c onnxruntime-node parity test
 // and the 2a.1.5 browser smoke test.
@@ -175,13 +175,13 @@ assert.match(
   "CalmarPipeline must configure the shared executor as a module worker"
 );
 
-// Phase 2a.1.4b: InferenceExecutor must expose runSynthStrip() that posts
+// CalmarPipeline must expose runSynthStrip() that posts
 // the 'run-synthstrip' worker op, and must NOT carry the dead
 // runVertebralLabeling method (the worker no longer handles that op).
 assert.match(
   executor,
   /\brunSynthStrip\s*\(/,
-  "InferenceExecutor must define runSynthStrip(...)"
+  "CalmarPipeline must define runSynthStrip(...)"
 );
 assert.match(
   executor,
@@ -316,7 +316,7 @@ assert.match(
 assert.match(
   executor,
   /\brunInverseWarpMask\s*\(/,
-  'InferenceExecutor must expose runInverseWarpMask(...)'
+  'CalmarPipeline must expose runInverseWarpMask(...)'
 );
 assert.match(
   executor,

@@ -45,8 +45,10 @@ async function loadSharedWorkerBindings() {
   return {
     createWorkerEmitter: worker.createWorkerEmitter,
     fetchModelAsset: worker.fetchModel,
+    getOptimalWasmThreads: worker.getOptimalWasmThreads,
     installWorkerRouter: worker.installWorkerRouter,
     localForageCache: worker.localForageCache,
+    prepareRasWorkerInput: worker.prepareRasWorkerInput,
     createNiftiFromData: niftiUtils.createNiftiFromData,
     parseNiftiVolume: niftiUtils.parseNiftiVolume,
     getOrientationTransform: geometry.getOrientationTransform,

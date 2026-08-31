@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 // success/failure messaging, and drop-tree traversal. The actual dcm2niix
 // WASM module is replaced with a stub so the tests run without a browser.
 
-const { DicomController } = await import('../web/js/controllers/DicomController.js');
+const { DicomController } = await import('../../../packages/components/src/file-io/DicomController.js');
 
 function makeNiftiBlob(name) {
   return { name, content: new Uint8Array([1, 2, 3]) };
@@ -29,7 +29,7 @@ function makeStubDcm2niix(returnFiles, opts = {}) {
 {
   const log = [];
   let completed = null;
-  const ctl = new DicomController({
+  const ctl = new DicomController({ throwOnError: false,
     updateOutput: (m) => log.push(m),
     onConversionComplete: (f) => { completed = f; }
   });
@@ -51,7 +51,7 @@ function makeStubDcm2niix(returnFiles, opts = {}) {
 {
   const log = [];
   let completed = null;
-  const ctl = new DicomController({
+  const ctl = new DicomController({ throwOnError: false,
     updateOutput: (m) => log.push(m),
     onConversionComplete: (f) => { completed = f; }
   });
@@ -69,7 +69,7 @@ function makeStubDcm2niix(returnFiles, opts = {}) {
 // Test 3: convertFiles handles thrown errors gracefully
 {
   const log = [];
-  const ctl = new DicomController({ updateOutput: (m) => log.push(m) });
+  const ctl = new DicomController({ throwOnError: false, updateOutput: (m) => log.push(m) });
   ctl._createInstance = async () => makeStubDcm2niix([], { throw: 'wasm exploded' });
 
   await ctl.convertFiles([{ name: 'a.dcm' }]);
@@ -80,7 +80,7 @@ function makeStubDcm2niix(returnFiles, opts = {}) {
 
 // Test 4: empty/null input is a no-op
 {
-  const ctl = new DicomController({});
+  const ctl = new DicomController({ throwOnError: false,});
   await ctl.convertFiles([]);
   await ctl.convertFiles(null);
   await ctl.convertDropItems([]);
@@ -92,7 +92,7 @@ function makeStubDcm2niix(returnFiles, opts = {}) {
 {
   const log = [];
   let completed = null;
-  const ctl = new DicomController({
+  const ctl = new DicomController({ throwOnError: false,
     updateOutput: (m) => log.push(m),
     onConversionComplete: (f) => { completed = f; }
   });
@@ -136,7 +136,7 @@ function makeStubDcm2niix(returnFiles, opts = {}) {
 // Test 6: convertDropItems with no entries -> "No DICOM files found" message
 {
   const log = [];
-  const ctl = new DicomController({ updateOutput: (m) => log.push(m) });
+  const ctl = new DicomController({ throwOnError: false, updateOutput: (m) => log.push(m) });
   ctl._createInstance = async () => makeStubDcm2niix([]);
   // Entry that turns out to have no files.
   const emptyDir = {

@@ -67,7 +67,7 @@
 - [X] T025 [US1] Update default task selection and model loading in `web/js/app/sct-tasks.js`
 - [X] T026 [US1] Update inference model resolution to use selected SCT model asset from the manifest in `web/js/inference-worker.js`
 - [X] T027 [US1] Update output filename and provenance generation for SCT `spinalcord` downloads in `web/js/spinalcordtoolbox-app.js`
-- [X] T028 [US1] Update overlay colormap registration for SCT spinal cord labels in `web/js/controllers/ViewerController.js`
+- [X] T028 [US1] Update overlay colormap registration for SCT spinal cord labels through the shared `@neurodesk/webapp-components` `ViewerController`
 - [X] T029 [US1] Update primary UI title, model selector copy, run controls, about modal, privacy modal, and footer for SCT `spinalcord` workflow in `web/index.html`
 - [X] T030 [US1] Remove obsolete obsolete ONNX assets from active model references in `web/models/manifest.json`
 - [X] T031 [US1] Run `python scripts/download_sct_models.py --stable --task spinalcord --output .tmp_sct_models`

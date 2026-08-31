@@ -16,9 +16,9 @@ import NiiVueGPU, {
   SLICE_TYPE,
 } from '@niivue/niivue'
 import { mountImagingWorkspace } from '@neurodesk/webapp-components/core/mount-imaging-workspace'
-import '@neurodesk/webapp-components/styles/base.css'
-import { runDcm2niix, traverseDataTransferItems } from './dcm2niix/index'
-import { Niimath } from './niimath'
+import '@neurodesk/webapp-components/styles/imaging-workspace.css'
+import { runDcm2niix, traverseDataTransferItems } from '@neurodesk/runtime-support/dcm2niix-client'
+import { Niimath } from '@neurodesk/runtime-support/niimath'
 import { CSF_LABELS, WM_LABELS, parseQcTsv, renderQc } from './qc'
 
 const ASSET_BASE_URL =
@@ -32,6 +32,7 @@ mountImagingWorkspace({
   title: 'BrowserQC',
   subtitle: 'Automated MRI quality control in your browser',
   mark: 'Q',
+  controlsContract: { about: '#aboutBtn' },
 })
 
 function $<T extends HTMLElement>(id: string): T {
@@ -103,11 +104,9 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   })
 }
 
-// The vendored niimath wrapper exposes no public accessor for its Web Worker, so we
-// reach the private field (verified named `worker`, src/niimath/index.js) for the raw
-// --qc post, worker recovery, and teardown. Centralised here so a wrapper rename
-// fails in ONE place — ensureNiimath() asserts the handle is real after init(), so a
-// bump fails loudly at the seam instead of silently disabling QC + leaking the worker.
+// The runtime-support niimath wrapper exposes no public worker accessor. The
+// raw --qc path still needs that worker for compatibility, so keep the private
+// lookup in one place and assert it after init().
 function niimathWorker(): Worker | null {
   return (niimath as unknown as { worker?: Worker | null }).worker ?? null
 }

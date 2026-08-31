@@ -27,7 +27,7 @@ All niimath I/O is uncompressed (`-gz 0`) for speed; NiiVue re-gzips when you Sa
 
 ## License
 
-**BSD-2-Clause.** Defacing uses the BSD-2 build of niimath — the fast affine `-deface` engine, no GPL `spm_coreg`/SPM code — so the whole app is BSD-2-Clause. (The fast-deface engine is newer than the current npm release, so the built BSD artifacts are vendored as local source under [src/niimath/](src/niimath/); this goes away once niimath republishes to npm.)
+**BSD-2-Clause.** Defacing uses the BSD-2 build of niimath: the fast affine `-deface` engine, no GPL `spm_coreg`/SPM code, so the whole app is BSD-2-Clause. The fast-deface engine is newer than the current npm release, so the built BSD artifacts are shared through [packages/runtime-support](../../packages/runtime-support/src/niimath/). The app can switch back to npm once niimath republishes.
 
 ## Develop
 

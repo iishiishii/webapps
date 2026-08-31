@@ -59,9 +59,14 @@ export function mountImagingWorkspace(config = {}) {
     }),
   ]);
 
-  for (const [action, target] of Object.entries(config.controlsContract || {})) {
-    const element = resolveElement(target, doc);
-    if (element) element.dataset.neurodeskControl = action;
+  const actions = new Set(['about', 'cite', 'privacy']);
+  for (const [action, configuredTargets] of Object.entries(config.controlsContract || {})) {
+    if (!actions.has(action)) throw new Error(`Unsupported shell control: ${action}`);
+    const targets = Array.isArray(configuredTargets) ? configuredTargets : [configuredTargets];
+    for (const target of targets) {
+      const element = resolveElement(target, doc);
+      if (element) element.dataset.neurodeskControl = action;
+    }
   }
 
   appHeader.append(brand, navigation);

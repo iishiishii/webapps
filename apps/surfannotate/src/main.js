@@ -1,4 +1,4 @@
-import '@neurodesk/webapp-components/styles/base.css';
+import '@neurodesk/webapp-components/styles/imaging-workspace.css';
 import './styles.css';
 
 import { mountImagingWorkspace } from '@neurodesk/webapp-components/core/mount-imaging-workspace';
@@ -159,7 +159,8 @@ mountImagingWorkspace({
   subtitle: 'Surface ROIs and vertex selection',
   // Hidden in styles.css — the shell has no option to omit it. Kept as a
   // sensible value rather than removed, so unhiding is a one-line change.
-  mark: 'S'
+  mark: 'S',
+  controlsContract: { cite: '[data-cite-open]' }
 });
 
 const state = {

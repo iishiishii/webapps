@@ -12,27 +12,20 @@ import { boxFilter3D, boxFilter3dSeparable } from './worker/utils/FilterUtils.js
 import { computeFieldMap } from './worker/utils/FieldMapping.js';
 import { buildConfigJson } from './modules/ConfigBridge.js';
 import * as QSMConfig from './app/config.js';
+import { createWorkerEmitter, installWorkerRouter } from './vendor/webapp-components/src/worker/index.js';
 
 let wasmModule = null;
+const workerMessages = createWorkerEmitter(self);
+const {
+  complete: postComplete,
+  error: postError,
+  log: postLog,
+  progress: postProgress,
+} = workerMessages;
 
-// Post progress updates to main thread
-function postProgress(value, text) {
-  self.postMessage({ type: 'progress', value, text });
-}
-
-// Post log messages to main thread
-function postLog(message) {
-  self.postMessage({ type: 'log', message });
-}
-
-// Post error to main thread
-function postError(message) {
-  self.postMessage({ type: 'error', message });
-}
-
-// Post completion to main thread
-function postComplete(results) {
-  self.postMessage({ type: 'complete', results });
+function emitMessage(message) {
+  const { type, ...data } = message;
+  workerMessages.emit(type, data);
 }
 
 // Send intermediate stage data for live display
@@ -45,7 +38,7 @@ function sendStageData(stage, data, dims, voxelSize, affine, description, displa
     voxelSize[0], voxelSize[1], voxelSize[2],
     affine
   );
-  self.postMessage({ type: 'stageData', stage, data: niftiBytes, description, displayNow, displayRange });
+  emitMessage({ type: 'stageData', stage, data: niftiBytes, description, displayNow, displayRange });
 }
 
 function sendStageData4D(stage, echoArrays, dims, voxelSize, affine, description, displayNow = false) {
@@ -74,7 +67,7 @@ function sendStageData4D(stage, echoArrays, dims, voxelSize, affine, description
   header.setInt16(48, nEchoes, true); // dim[4] = nEchoes
   header.setFloat32(92, 1.0, true);   // pixdim[4] = 1.0 (needed for NiiVue to show frame controls)
 
-  self.postMessage({ type: 'stageData', stage, data: niftiBytes, description, displayNow });
+  emitMessage({ type: 'stageData', stage, data: niftiBytes, description, displayNow });
 }
 
 /// Compute a robust display range for non-negative data using percentiles.
@@ -1200,19 +1193,19 @@ async function runQsmartPipeline(data) {
 
 // BET-specific handlers
 function postBETProgress(value, text) {
-  self.postMessage({ type: 'betProgress', value, text });
+  emitMessage({ type: 'betProgress', value, text });
 }
 
 function postBETLog(message) {
-  self.postMessage({ type: 'betLog', message });
+  emitMessage({ type: 'betLog', message });
 }
 
 function postBETComplete(maskData, coverage) {
-  self.postMessage({ type: 'betComplete', maskData, coverage });
+  emitMessage({ type: 'betComplete', maskData, coverage });
 }
 
 function postBETError(message) {
-  self.postMessage({ type: 'betError', message });
+  emitMessage({ type: 'betError', message });
 }
 
 async function runBET(data) {
@@ -1325,14 +1318,14 @@ async function runBiasCorrection(data) {
     console.log(`[Worker] Bias correction complete, result sum: ${resultSum.toExponential(3)}`);
 
     // Send result back
-    self.postMessage({
+    emitMessage({
       type: 'biasCorrection',
       result: Array.from(result)
     });
 
   } catch (error) {
     console.error('[Worker] Bias correction error:', error);
-    self.postMessage({
+    emitMessage({
       type: 'biasCorrection',
       error: error.message
     });
@@ -1369,14 +1362,14 @@ async function runVoxelQuality(data) {
 
     console.log(`[Worker] Voxel quality map complete, length: ${result.length}`);
 
-    self.postMessage({
+    emitMessage({
       type: 'voxelQuality',
       result: Array.from(result)
     });
 
   } catch (error) {
     console.error('[Worker] Voxel quality error:', error);
-    self.postMessage({
+    emitMessage({
       type: 'voxelQuality',
       error: error.message
     });
@@ -2589,15 +2582,15 @@ async function runSWIPipeline(data) {
   }
 }
 
-// Handle messages from main thread
-self.onmessage = async function (e) {
-  const { type, data } = e.data;
-
+installWorkerRouter({
+  scope: self,
+  getServices: async () => ({}),
+  handle: async ({ type, data }) => {
   try {
     switch (type) {
       case 'init':
         await initializeWasm();
-        self.postMessage({ type: 'initialized' });
+        workerMessages.initialized();
         break;
 
       case 'run':
@@ -2625,20 +2618,20 @@ self.onmessage = async function (e) {
         break;
 
       case 'getDefaultConfig':
-        self.postMessage({ type: 'defaultConfig', result: wasmModule.get_default_config_json_wasm() });
+        emitMessage({ type: 'defaultConfig', result: wasmModule.get_default_config_json_wasm() });
         break;
 
       case 'generateCommand':
-        self.postMessage({ type: 'commandResult', result: wasmModule.generate_command_wasm(data.configJson, data.maskSection || '') });
+        emitMessage({ type: 'commandResult', result: wasmModule.generate_command_wasm(data.configJson, data.maskSection || '') });
         break;
 
       case 'generateMethods':
-        self.postMessage({ type: 'methodsResult', result: wasmModule.generate_methods_wasm(data.configJson, 'QSMbly', data.maskSection || '') });
+        emitMessage({ type: 'methodsResult', result: wasmModule.generate_methods_wasm(data.configJson, 'QSMbly', data.maskSection || '') });
         break;
 
       case 'generateConfigToml':
         // Download path: pruned to the selected algorithm (still loads in qsmxt.rs).
-        self.postMessage({ type: 'configTomlResult', result: wasmModule.config_json_to_toml_selected_wasm(data.configJson, data.maskSection || '') });
+        emitMessage({ type: 'configTomlResult', result: wasmModule.config_json_to_toml_selected_wasm(data.configJson, data.maskSection || '') });
         break;
 
       default:
@@ -2648,4 +2641,5 @@ self.onmessage = async function (e) {
     postError(error.message);
     console.error(error);
   }
-};
+  },
+});

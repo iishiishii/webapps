@@ -5,8 +5,7 @@
  * threshold detection, and BET integration.
  */
 
-import { erodeMask3D, dilateMask3D, fillHoles3D } from '../modules/mask/MorphologyOps.js';
-import { computeOtsuThreshold } from '../modules/mask/ThresholdUtils.js';
+import { computeOtsuThreshold, dilateMask3D, erodeMask3D, fillHoles3D } from '@neurodesk/webapp-components/volume';
 import { createMaskNifti, createNiftiHeaderFromVolume } from '@neurodesk/webapp-components/file-io';
 
 export class MaskController {

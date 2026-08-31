@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readdir } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import test from 'node:test';
 import { repoRoot } from '../scripts/lib/apps-registry.mjs';
@@ -9,28 +9,9 @@ import { repoRoot } from '../scripts/lib/apps-registry.mjs';
 // is a thin app-specific shim over one). The list may only shrink: extracting
 // a fork behind parity tests removes its entry; adding a new shadow of a
 // shared module fails this test instead of silently starting a new fork.
-const KNOWN_FORKS = new Set([
-  'apps/calmar/web/js/controllers/DicomController.js',
-  'apps/calmar/web/js/controllers/FileIOController.js',
-  'apps/calmar/web/js/modules/ui/ConsoleOutput.js',
-  'apps/dicompare/public/embed/DicompareReportRenderer.js',
-  'apps/musclemap/web/js/controllers/DicomController.js',
-  'apps/musclemap/web/js/controllers/FileIOController.js',
-  'apps/musclemap/web/js/modules/inference/connected-components.js',
-  'apps/musclemap/web/js/modules/ui/MetricsSummary.js',
-  'apps/qsmbly/js/controllers/DicomController.js',
-  'apps/qsmbly/js/controllers/FileIOController.js',
-  'apps/qsmbly/js/controllers/PipelineExecutor.js',
-  'apps/qsmbly/js/modules/mask/MorphologyOps.js',
-  'apps/qsmbly/js/modules/mask/ThresholdUtils.js',
-  'apps/qsmbly/js/modules/viewer/EchoNavigator.js',
-  'apps/seedseg/web/js/controllers/DicomController.js',
-  'apps/seedseg/web/js/controllers/FileIOController.js',
-  'apps/seedseg/web/js/modules/inference/connected-components.js',
-  'apps/spinalcordtoolbox/web/js/controllers/DicomController.js',
-  'apps/spinalcordtoolbox/web/js/controllers/FileIOController.js',
-  'apps/vesselboost/web/js/controllers/DicomController.js',
-  'apps/vesselboost/web/js/controllers/FileIOController.js',
+const KNOWN_FORKS = new Set();
+const GENERATED_MIRRORS = new Map([
+  ['apps/dicompare/public/embed/DicompareReportRenderer.js', 'packages/components/src/ui/DicompareReportRenderer.js'],
 ]);
 
 // App-local names that reimplement a shared module under a different filename.
@@ -76,7 +57,7 @@ test('no app grows a new fork of a shared component module', async () => {
     if (shadowed.has(name)) found.add(relative(repoRoot, path));
   }
 
-  const unexpected = [...found].filter((path) => !KNOWN_FORKS.has(path)).sort();
+  const unexpected = [...found].filter((path) => !KNOWN_FORKS.has(path) && !GENERATED_MIRRORS.has(path)).sort();
   assert.deepEqual(unexpected, [], [
     'New app-local shadows of shared components appeared. Import the module from',
     '@neurodesk/webapp-components instead of copying it; if a fork is genuinely',
@@ -90,4 +71,10 @@ test('no app grows a new fork of a shared component module', async () => {
     'entries from KNOWN_FORKS so the list only shrinks:',
     ...extracted.map((path) => `- ${path}`),
   ].join('\n'));
+});
+
+test('distribution mirrors exactly match their canonical source', async () => {
+  for (const [target, source] of GENERATED_MIRRORS) {
+    assert.equal(await readFile(join(repoRoot, target), 'utf8'), await readFile(join(repoRoot, source), 'utf8'), target);
+  }
 });

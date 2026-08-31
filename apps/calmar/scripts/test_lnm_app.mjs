@@ -71,7 +71,7 @@ for (const method of [
 // Imports: must pull in the pieces we expect, and must NOT pull in any of the
 // SCT modules we deleted in Phase 0.
 const requiredImports = [
-  /from\s+['"]\.\/controllers\/FileIOController\.js['"]/,
+  /import\s*\{[^}]*SimpleFileIOController[^}]*\}\s*from\s+['"]@neurodesk\/webapp-components\/file-io['"]/s,
   /import\s*\{[^}]*ViewerController[^}]*\}\s*from\s+['"]@neurodesk\/webapp-components['"]/s,
   /from\s+['"]\.\/app\/lnm-tasks\.js['"]/,
   /from\s+['"]\.\/app\/lnm-labels\.js['"]/,
@@ -229,7 +229,7 @@ assert.match(src, /this\._perfStats\s*=\s*\[\s*\]/,
   'runFullPipeline must reset _perfStats at start');
 assert.match(src, /\[perf\]/,
   'each stage must emit a [perf] line into the console');
-assert.match(src, /technicalConsole\s*=\s*new ConsoleOutput/,
+assert.match(src, /technicalConsole\s*=\s*new CalmarConsoleOutput/,
   'lnm-app.js must keep a separate technical log viewer');
 assert.match(src, /updateDebugOutput\s*\(/,
   'lnm-app.js must route model and processing details to the technical log');

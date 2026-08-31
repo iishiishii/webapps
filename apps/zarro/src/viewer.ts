@@ -9,7 +9,7 @@ import NiiVue, {
   SLICE_TYPE,
   type VolumeChunkSource,
 } from '@niivue/niivue'
-import '@neurodesk/webapp-components/styles/base.css'
+import '@neurodesk/webapp-components/styles/imaging-workspace.css'
 import { mountImagingWorkspace } from '@neurodesk/webapp-components/core/mount-imaging-workspace'
 import * as zarr from 'zarrita'
 import './styles.css'

@@ -5,7 +5,7 @@
  * Pipeline is split into interactive steps that the user runs sequentially.
  */
 
-import { FileIOController } from './controllers/FileIOController.js';
+import { SimpleFileIOController } from '@neurodesk/webapp-components/file-io';
 import { VesselBoostViewer } from './controllers/VesselBoostViewer.js';
 import { VesselBoostPipeline } from './controllers/VesselBoostPipeline.js';
 import { ConsoleOutput, bindWindowControls } from '@neurodesk/webapp-components/ui';
@@ -71,7 +71,8 @@ class VesselBoostApp {
     if (aboutVersionEl) aboutVersionEl.textContent = `v${Config.VERSION}`;
 
     // Controllers
-    this.fileIOController = new FileIOController({
+    this.fileIOController = new SimpleFileIOController({
+      dcm2niixModuleUrl: new URL('../dcm2niix/index.js', import.meta.url).href,
       updateOutput: (msg) => this.updateOutput(msg),
       onFileLoaded: (file) => this.onFileLoaded(file)
     });

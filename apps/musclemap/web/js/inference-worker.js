@@ -6,7 +6,7 @@
  */
 
 import * as ort from '../wasm/ort.webgpu.bundle.min.mjs';
-import { createWorkerEmitter, fetchModel as fetchModelAsset, installWorkerRouter } from '../vendor/webapp-components/src/worker/index.js';
+import { createWorkerEmitter, fetchModel as fetchModelAsset, getOptimalWasmThreads, installWorkerRouter } from '../vendor/webapp-components/src/worker/index.js';
 import { createNiftiFromData, parseNiftiVolume } from '../vendor/webapp-components/src/file-io/NiftiUtils.js';
 import {
   computeForegroundBBox,
@@ -661,10 +661,6 @@ async function emitUpstreamCompatibleOutput({
   postComplete();
 }
 
-function getOptimalWasmThreads() {
-  const hardwareThreads = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4;
-  return Math.max(1, hardwareThreads);
-}
 
 // ==================== Intramuscular Fat Metrics ====================
 

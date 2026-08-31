@@ -1,5 +1,6 @@
 import { downloadFile } from '../file-io/download.js';
 import { collectTransferables, WorkerEventType, WorkerRequestType } from './workerProtocol.js';
+import { WorkerSession } from '../worker/WorkerSession.js';
 
 export class PipelineExecutor {
   constructor(options = {}) {
@@ -26,7 +27,7 @@ export class PipelineExecutor {
     this.resultFileName = options.resultFileName || ((stage, _data, context) => `${context?.taskId ? `${context.taskId}_` : ''}${stage}.nii`);
     this.stageDataKey = options.stageDataKey || null;
 
-    this.worker = null;
+    this.workerSession = null;
     this.workerReady = false;
     this.workerInitializing = false;
     this.running = false;
@@ -71,18 +72,17 @@ export class PipelineExecutor {
   }
 
   setupWorker() {
-    if (this.worker) return;
+    if (this.workerSession) return;
     if (!this.createWorker && !this.workerUrl) throw new Error('PipelineExecutor requires createWorker or workerUrl');
-    this.worker = this.createWorker
-      ? this.createWorker()
-      : new Worker(this.workerUrl, this.workerType ? { type: this.workerType } : undefined);
-    this.worker.onmessage = event => this.handleMessage(event.data || {});
-    this.worker.onerror = event => {
-      const message = event.message || 'Worker error';
-      this.updateOutput(`Worker error: ${message}`);
-      this.handleError(message);
-    };
-    this.worker.onmessageerror = () => this.handleError('Worker message could not be deserialized');
+    this.workerSession = new WorkerSession({
+      createWorker: this.createWorker || (() => new Worker(this.workerUrl, this.workerType ? { type: this.workerType } : undefined)),
+      onError: (message) => {
+        this.updateOutput(`Worker error: ${message}`);
+        this.handleError(message);
+      },
+    });
+    this.workerSession.subscribe((message) => this.handleMessage(message));
+    this.workerSession.start();
   }
 
   waitUntilReady() {
@@ -425,8 +425,8 @@ export class PipelineExecutor {
   }
 
   terminateWorker() {
-    this.worker?.terminate();
-    this.worker = null;
+    this.workerSession?.terminate();
+    this.workerSession = null;
     this.workerReady = false;
     this.workerInitializing = false;
     this.pendingRestore = null;
@@ -454,12 +454,12 @@ export class PipelineExecutor {
   post(type, data = {}, options = {}) {
     const payload = { type, data };
     const transferables = options.transfer === false ? [] : collectTransferables(data);
-    this.worker.postMessage(payload, transferables);
+    this.workerSession.send(payload, transferables);
   }
 
   postRaw(message, options = {}) {
     const transferables = options.transfer === false ? [] : collectTransferables(message.data || {});
-    this.worker.postMessage(message, transferables);
+    this.workerSession.send(message, transferables);
   }
 }
 

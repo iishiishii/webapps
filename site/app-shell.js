@@ -160,6 +160,7 @@ import { resolveShellAdapter } from './shell-adapters/index.js';
 
   function installBars() {
     const shell = resolveShellAdapter(metadata.shell, document);
+    shell.managedLinks.forEach((link) => { link.hidden = true; });
     shell.headers.forEach(replaceHeader);
     if (shell.utilities.length && shell.headers[0]) preserveUtilityControls(shell.headers[0], '[data-neurodesk-utility]');
     shell.overlays.forEach((landing) => {

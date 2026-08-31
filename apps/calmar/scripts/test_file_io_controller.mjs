@@ -1,15 +1,12 @@
 #!/usr/bin/env node --no-warnings
-// Phase 35: behavior tests for web/js/controllers/FileIOController.js.
+// Behavior tests for the adopted shared SimpleFileIOController.
 //
 // Covers: NIfTI vs DICOM detection, file dispatch via onFileLoaded,
 // state tracking (getActiveFile/hasValidData/clearFiles), drop-item
 // handling with mixed payloads.
 
 import assert from 'node:assert/strict';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+import { SimpleFileIOController as FileIOController } from '../../../packages/components/src/file-io/SimpleFileIOController.js';
 
 // FileIOController._updateUI / clearFiles touch the DOM. Stub document
 // minimally so they no-op cleanly in Node.
@@ -26,8 +23,6 @@ globalThis.document = {
     set value(v) {}
   })
 };
-
-const { FileIOController } = await import(path.join(ROOT, 'web/js/controllers/FileIOController.js'));
 
 function fakeFile(name) {
   return { name, size: 1024 };

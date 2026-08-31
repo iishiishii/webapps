@@ -6,7 +6,7 @@
  */
 
 import * as ort from '../wasm/ort.webgpu.bundle.min.mjs';
-import { createWorkerEmitter, fetchModel as fetchModelAsset, installWorkerRouter, localForageCache } from '../vendor/webapp-components/src/worker/index.js';
+import { createWorkerEmitter, fetchModel as fetchModelAsset, getOptimalWasmThreads, installWorkerRouter, localForageCache } from '../vendor/webapp-components/src/worker/index.js';
 import { createNiftiFromData, parseNiftiVolume } from '../vendor/webapp-components/src/file-io/NiftiUtils.js';
 import { connectedComponents3D } from '../vendor/webapp-components/src/volume/connectedComponents.js';
 import { cOrderToNifti, niftiToCOrder } from '../vendor/webapp-components/src/volume/layout.js';
@@ -316,7 +316,7 @@ installWorkerRouter({
   switch (type) {
     case 'init':
       try {
-        ort.env.wasm.numThreads = navigator.hardwareConcurrency > 1 ? 2 : 1;
+        ort.env.wasm.numThreads = getOptimalWasmThreads();
         ort.env.wasm.wasmPaths = '../wasm/';
 
         localforage.config({

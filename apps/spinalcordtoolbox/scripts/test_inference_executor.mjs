@@ -2,8 +2,7 @@
 
 import assert from 'node:assert/strict';
 
-// We test the message-handling logic by attaching a fake worker after
-// construction (bypassing _setupWorker, which requires a browser Worker).
+// We test message handling through the shared WorkerSession transport.
 // Globals (Blob, File, URL) used by stage-data handling are provided by
 // modern Node, but we shim document for downloadStage's <a> creation.
 
@@ -72,8 +71,8 @@ function attachFakeWorker(exec) {
     onerror: null,
     terminated: false
   };
-  exec.worker = fakeWorker;
-  exec.worker.onmessage = event => exec.handleMessage(event.data);
+  exec.createWorker = () => fakeWorker;
+  exec.setupWorker();
   return { fakeWorker, sent };
 }
 
@@ -93,8 +92,8 @@ function attachFakeWorker(exec) {
 {
   const { exec, progress } = makeExecutor();
   attachFakeWorker(exec);
-  exec.worker.onmessage({ data: { type: 'progress', value: 0.25, text: 'Loading' } });
-  exec.worker.onmessage({ data: { type: 'progress', value: 0.5, text: 'Inferring' } });
+  exec.workerSession.worker.onmessage({ data: { type: 'progress', value: 0.25, text: 'Loading' } });
+  exec.workerSession.worker.onmessage({ data: { type: 'progress', value: 0.5, text: 'Inferring' } });
   assert.deepEqual(progress, [[0.25, 'Loading'], [0.5, 'Inferring']]);
 }
 
@@ -102,7 +101,7 @@ function attachFakeWorker(exec) {
 {
   const { exec, initialized, log } = makeExecutor();
   attachFakeWorker(exec);
-  exec.worker.onmessage({ data: { type: 'initialized', webgpuAvailable: true } });
+  exec.workerSession.worker.onmessage({ data: { type: 'initialized', webgpuAvailable: true } });
   assert.equal(exec.isReady(), true);
   assert.equal(exec.webgpuAvailable, true);
   assert.equal(initialized.length, 1);
@@ -115,7 +114,7 @@ function attachFakeWorker(exec) {
   attachFakeWorker(exec);
   exec.currentTaskId = 'spinalcord';
   const niftiData = new Uint8Array([1, 2, 3]).buffer;
-  exec.worker.onmessage({
+  exec.workerSession.worker.onmessage({
     data: {
       type: 'stageData',
       stage: 'inference',
@@ -135,7 +134,7 @@ function attachFakeWorker(exec) {
   const { exec, stages } = makeExecutor();
   attachFakeWorker(exec);
   exec.currentTaskId = 'lesion_sci_t2';
-  exec.worker.onmessage({
+  exec.workerSession.worker.onmessage({
     data: {
       type: 'stageData',
       kind: 'metrics',
@@ -160,7 +159,7 @@ function attachFakeWorker(exec) {
 {
   const { exec, errors, progress } = makeExecutor();
   attachFakeWorker(exec);
-  exec.worker.onmessage({ data: { type: 'error', message: 'model load failed' } });
+  exec.workerSession.worker.onmessage({ data: { type: 'error', message: 'model load failed' } });
   assert.deepEqual(errors, ['model load failed']);
   assert.deepEqual(progress.at(-1), [0, 'Failed']);
   assert.equal(exec.isRunning(), false);
@@ -172,7 +171,7 @@ function attachFakeWorker(exec) {
   attachFakeWorker(exec);
   exec.running = true;
   exec.currentRunningStep = 'inference';
-  exec.worker.onmessage({ data: { type: 'complete' } });
+  exec.workerSession.worker.onmessage({ data: { type: 'complete' } });
   assert.equal(completed.length, 1);
   assert.equal(exec.isRunning(), false);
   assert.equal(exec.currentRunningStep, null);
@@ -183,13 +182,13 @@ function attachFakeWorker(exec) {
   const { exec, stepCompletes } = makeExecutor();
   attachFakeWorker(exec);
   exec.stepStatus.inference = 'running';
-  exec.worker.onmessage({ data: { type: 'step-complete', step: 'inference' } });
+  exec.workerSession.worker.onmessage({ data: { type: 'step-complete', step: 'inference' } });
   assert.equal(exec.getStepStatus('inference'), 'complete');
   assert.deepEqual(stepCompletes, ['inference']);
 
   // 'skipped' is preserved
   exec.stepStatus.load = 'skipped';
-  exec.worker.onmessage({ data: { type: 'step-complete', step: 'load' } });
+  exec.workerSession.worker.onmessage({ data: { type: 'step-complete', step: 'load' } });
   assert.equal(exec.getStepStatus('load'), 'skipped');
 }
 
@@ -197,7 +196,7 @@ function attachFakeWorker(exec) {
 {
   const { exec, volumes } = makeExecutor();
   attachFakeWorker(exec);
-  exec.worker.onmessage({
+  exec.workerSession.worker.onmessage({
     data: { type: 'volume-info', rasDims: [320, 320, 64], rasSpacing: [1, 1, 3], totalSlices: 64 }
   });
   assert.deepEqual(exec.getVolumeInfo(), { rasDims: [320, 320, 64], rasSpacing: [1, 1, 3], totalSlices: 64 });
@@ -251,7 +250,7 @@ function attachFakeWorker(exec) {
   exec.cancel();
   assert.equal(fakeWorker.terminated, true);
   assert.equal(exec.isRunning(), false);
-  assert.equal(exec.worker, null);
+  assert.equal(exec.workerSession, null);
   assert.deepEqual(progress.at(-1), [0, 'Cancelled']);
   assert.ok(log.some(m => m.includes('Cancelling')));
 }

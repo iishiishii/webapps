@@ -11,6 +11,7 @@
       "@neurodesk/webapp-components/ui": "./vendor/webapp-components/src/ui/index.js",
       "@neurodesk/webapp-components/file-io": "./vendor/webapp-components/src/file-io/index.js",
       "@neurodesk/webapp-components/volume": "./vendor/webapp-components/src/volume/index.js",
+      "@neurodesk/webapp-components/worker": "./vendor/webapp-components/src/worker/index.js",
       "@neurodesk/webapp-components/": "./vendor/webapp-components/src/"
     }
   }
@@ -73,8 +74,8 @@
             <span>QSMbly</span>
           </div>
           <div class="landing-nav-links">
-            <a href="../" title="More Neurodesk web apps">More Apps</a>
-            <a href="https://github.com/neurodesk/webapps/tree/main/apps/qsmbly" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <a href="../" data-neurodesk-shell-link="more-apps" title="More Neurodesk web apps">More Apps</a>
+            <a href="https://github.com/neurodesk/webapps/tree/main/apps/qsmbly" data-neurodesk-shell-link="github" target="_blank" rel="noopener noreferrer">GitHub</a>
             <a href="https://qsmxt.github.io/QSMxT/" target="_blank" rel="noopener noreferrer">QSMxT</a>
             <a href="#" id="landingNavLaunch" class="landing-nav-launch">Launch &rarr;</a>
           </div>
@@ -196,7 +197,7 @@
           </svg>
           <span>Guide</span>
         </button>
-        <button class="header-link" id="openAbout" title="About">
+        <button class="header-link" id="openAbout" data-neurodesk-control="about" title="About">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/>
             <line x1="12" y1="16" x2="12" y2="12"/>
@@ -204,14 +205,14 @@
           </svg>
           <span>About</span>
         </button>
-        <button class="header-link" id="openCitations" title="Citations">
+        <button class="header-link" id="openCitations" data-neurodesk-control="cite" title="Citations">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
             <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
           </svg>
           <span>Cite</span>
         </button>
-        <button class="header-link" id="openPrivacy" title="Privacy">
+        <button class="header-link" id="openPrivacy" data-neurodesk-control="privacy" title="Privacy">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           </svg>
@@ -425,7 +426,7 @@
         </div>
 
         <!-- Threshold Slider (enabled only after Threshold button is pressed) -->
-        <div class="param-group" id="thresholdSliderGroup" style="margin-top: var(--space-sm); display: none;">
+        <div class="param-group" id="thresholdSliderGroup" style="margin-top: var(--nd-space-sm); display: none;">
           <div class="threshold-header">
             <label class="param-label" for="maskThreshold" id="thresholdLabel">Threshold</label>
             <button class="btn-icon" id="autoThreshold" title="Reset to Otsu threshold" disabled>
@@ -458,7 +459,7 @@
             </div>
 
             <!-- Drawing/Painting Tools -->
-            <label class="param-label" style="margin-top: var(--space-sm); margin-bottom: var(--space-xs);">Paint Mask</label>
+            <label class="param-label" style="margin-top: var(--nd-space-sm); margin-bottom: var(--nd-space-xs);">Paint Mask</label>
             <div class="drawing-controls">
               <div class="brush-mode-buttons">
                 <button class="btn btn-secondary btn-sm" id="enableDrawing" title="Enable brush painting">
@@ -504,7 +505,7 @@
           Supplementary Images
         </h2>
         <div class="section-content">
-          <h5 style="margin: 0 0 var(--space-xs); font-size: 0.8rem; color: var(--color-text-muted);">SWI</h5>
+          <h5 style="margin: 0 0 var(--nd-space-xs); font-size: 0.8rem; color: var(--nd-color-text-muted);">SWI</h5>
           <div style="display: flex; gap: 8px;">
             <button class="btn btn-secondary" id="openSwiSettings" style="flex: 1;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -520,8 +521,8 @@
               <span>Start SWI</span>
             </button>
           </div>
-          <hr style="border: none; border-top: 1px solid var(--color-border); margin: var(--space-sm) 0;">
-          <h5 style="margin: 0 0 var(--space-xs); font-size: 0.8rem; color: var(--color-text-muted);">T2* / R2*</h5>
+          <hr style="border: none; border-top: 1px solid var(--nd-color-border); margin: var(--nd-space-sm) 0;">
+          <h5 style="margin: 0 0 var(--nd-space-xs); font-size: 0.8rem; color: var(--nd-color-text-muted);">T2* / R2*</h5>
           <button class="btn btn-primary" id="runT2starR2star" style="width: 100%;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="5 3 19 12 5 21 5 3"/>
@@ -621,7 +622,7 @@
         <div class="section-content">
         <!-- Stage buttons are dynamically added here -->
         <div class="stage-buttons-grid" id="dynamicStageButtons"></div>
-        <button class="btn btn-secondary btn-sm" id="clearAllResults" style="width: 100%; margin-top: var(--space-xs);">
+        <button class="btn btn-secondary btn-sm" id="clearAllResults" style="width: 100%; margin-top: var(--nd-space-xs);">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"/>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -855,7 +856,7 @@
               <a href="https://doi.org/10.1002/mrm.26946" target="_blank" rel="noopener" title="DOI: 10.1002/mrm.26946"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Paper</a>
               <a href="https://github.com/astewartau/QSM.rs" target="_blank" rel="noopener" title="Code: QSM.rs"><svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Code</a>
             </div>
-            <p style="font-size: 0.75rem; line-height: 1.4; color: var(--color-text); background: rgba(230,160,30,0.10); border-left: 3px solid #e6a01e; padding: var(--space-xs) var(--space-sm); margin: 0 0 var(--space-sm); border-radius: 3px;">
+            <p style="font-size: 0.75rem; line-height: 1.4; color: var(--nd-color-text); background: rgba(230,160,30,0.10); border-left: 3px solid #e6a01e; padding: var(--nd-space-xs) var(--nd-space-sm); margin: 0 0 var(--nd-space-sm); border-radius: 3px;">
               TFI is single-step: it inverts the <strong>total field</strong> directly (its own background removal). Larger <strong>preconditioner</strong> suits data with strong background fields (e.g. air near sinuses).
             </p>
             <div class="param-group">
@@ -901,11 +902,11 @@
               <a href="https://github.com/wtsyeda/QSMART" target="_blank" rel="noopener" title="Code: QSMART"><svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Code</a>
             </div>
 
-            <p style="font-size: 0.75rem; line-height: 1.4; color: var(--color-text); background: rgba(230,160,30,0.10); border-left: 3px solid #e6a01e; padding: var(--space-xs) var(--space-sm); margin: 0 0 var(--space-sm); border-radius: 3px;">
+            <p style="font-size: 0.75rem; line-height: 1.4; color: var(--nd-color-text); background: rgba(230,160,30,0.10); border-left: 3px solid #e6a01e; padding: var(--nd-space-xs) var(--nd-space-sm); margin: 0 0 var(--nd-space-sm); border-radius: 3px;">
               ⚠ QSMART needs a <strong>tight brain mask</strong>. Build the mask with <strong>BET</strong> in the masking step — a loose threshold mask leaks non-brain signal into the dipole inversion and causes heavy streaking artifacts.
             </p>
 
-            <h5 style="margin: var(--space-sm) 0 var(--space-xs); font-size: 0.8rem; color: var(--color-text-muted);">Stage 1: Whole ROI</h5>
+            <h5 style="margin: var(--nd-space-sm) 0 var(--nd-space-xs); font-size: 0.8rem; color: var(--nd-color-text-muted);">Stage 1: Whole ROI</h5>
             <div class="param-group">
               <label class="param-label" for="qsmartSdfSigma1Stage1">SDF Sigma 1 (voxels)</label>
               <input type="number" id="qsmartSdfSigma1Stage1" value="10" min="1" max="30" step="1">
@@ -915,7 +916,7 @@
               <input type="number" id="qsmartSdfSigma2Stage1" value="0" min="0" max="30" step="1">
             </div>
 
-            <h5 style="margin: var(--space-sm) 0 var(--space-xs); font-size: 0.8rem; color: var(--color-text-muted);">Stage 2: Tissue Only</h5>
+            <h5 style="margin: var(--nd-space-sm) 0 var(--nd-space-xs); font-size: 0.8rem; color: var(--nd-color-text-muted);">Stage 2: Tissue Only</h5>
             <div class="param-group">
               <label class="param-label" for="qsmartSdfSigma1Stage2">SDF Sigma 1 (voxels)</label>
               <input type="number" id="qsmartSdfSigma1Stage2" value="8" min="1" max="30" step="1">
@@ -925,7 +926,7 @@
               <input type="number" id="qsmartSdfSigma2Stage2" value="2" min="0" max="30" step="1">
             </div>
 
-            <h5 style="margin: var(--space-sm) 0 var(--space-xs); font-size: 0.8rem; color: var(--color-text-muted);">SDF Parameters</h5>
+            <h5 style="margin: var(--nd-space-sm) 0 var(--nd-space-xs); font-size: 0.8rem; color: var(--nd-color-text-muted);">SDF Parameters</h5>
             <div class="param-group">
               <label class="param-label" for="qsmartSdfSpatialRadius">Spatial Radius (voxels)</label>
               <input type="number" id="qsmartSdfSpatialRadius" value="8" min="1" max="20" step="1">
@@ -939,8 +940,8 @@
               <input type="number" id="qsmartSdfCurvConstant" value="500" min="100" max="2000" step="50">
             </div>
 
-            <h5 style="margin: var(--space-sm) 0 var(--space-xs); font-size: 0.8rem; color: var(--color-text-muted);">Vasculature Detection (Frangi)</h5>
-            <p style="font-size: 0.7rem; color: var(--color-text-muted); margin: 0 0 var(--space-xs);">Parameters in mm - auto-scaled to voxels</p>
+            <h5 style="margin: var(--nd-space-sm) 0 var(--nd-space-xs); font-size: 0.8rem; color: var(--nd-color-text-muted);">Vasculature Detection (Frangi)</h5>
+            <p style="font-size: 0.7rem; color: var(--nd-color-text-muted); margin: 0 0 var(--nd-space-xs);">Parameters in mm - auto-scaled to voxels</p>
             <div class="param-group">
               <label class="param-label" for="qsmartVascSphereRadius">Bottom-hat Radius (mm)</label>
               <input type="number" id="qsmartVascSphereRadius" value="8" min="2" max="20" step="1">
@@ -962,7 +963,7 @@
               <input type="number" id="qsmartFrangiC" value="500" min="100" max="2000" step="50">
             </div>
 
-            <h5 style="margin: var(--space-sm) 0 var(--space-xs); font-size: 0.8rem; color: var(--color-text-muted);">Dipole Inversion</h5>
+            <h5 style="margin: var(--nd-space-sm) 0 var(--nd-space-xs); font-size: 0.8rem; color: var(--nd-color-text-muted);">Dipole Inversion</h5>
             <div class="param-group">
               <label class="param-label" for="qsmartInversionMethod">Inner inversion (both stages)</label>
               <select id="qsmartInversionMethod">
@@ -1902,7 +1903,7 @@
           <p class="command-modal-description">
             Auto-generated methods section with citations based on your pipeline settings:
           </p>
-          <div id="methodsPreviewRendered" style="font-size: 0.85rem; line-height: 1.6; padding: 12px 16px; background: var(--color-surface); border-radius: 8px; border: 1px solid var(--color-border);"></div>
+          <div id="methodsPreviewRendered" style="font-size: 0.85rem; line-height: 1.6; padding: 12px 16px; background: var(--nd-color-surface); border-radius: 8px; border: 1px solid var(--nd-color-border);"></div>
           <div id="methodsPreviewRaw" style="display: none;"></div>
         </div>
       </div>
@@ -2026,7 +2027,7 @@
       </div>
       <div class="modal-body">
         <div class="privacy-highlight">
-          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
+          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="var(--nd-color-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           </svg>
           <div>
@@ -2272,7 +2273,7 @@
 
         <div class="citation-section">
           <h4>Reference Implementations</h4>
-          <p class="citations-intro" style="margin-bottom: var(--space-sm);">The following repositories were used as references:</p>
+          <p class="citations-intro" style="margin-bottom: var(--nd-space-sm);">The following repositories were used as references:</p>
           <div class="ref-list">
             <a href="https://github.com/Bostrix/FSL-BET2" target="_blank" rel="noopener">FSL-BET2</a> - BET brain extraction
           </div>
@@ -2637,7 +2638,7 @@
     .stage-buttons-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: var(--space-xs);
+      gap: var(--nd-space-xs);
     }
 
     .stage-item {
@@ -2648,11 +2649,11 @@
     .stage-item .stage-tab {
       flex: 1;
       font-size: 0.7rem;
-      padding: var(--space-xs);
+      padding: var(--nd-space-xs);
     }
 
     .stage-item .download-btn {
-      padding: var(--space-xs);
+      padding: var(--nd-space-xs);
       opacity: 0.6;
     }
 
@@ -2669,59 +2670,59 @@
     .mask-preview-buttons {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: var(--space-xs);
-      margin-top: var(--space-sm);
+      gap: var(--nd-space-xs);
+      margin-top: var(--nd-space-sm);
     }
 
     .mask-preview-buttons .btn {
       font-size: 0.7rem;
-      padding: var(--space-xs) var(--space-sm);
+      padding: var(--nd-space-xs) var(--nd-space-sm);
     }
 
     /* Mask operation buttons */
     .mask-op-buttons {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: var(--space-xs);
+      gap: var(--nd-space-xs);
     }
 
     .mask-op-buttons .btn {
       font-size: 0.7rem;
-      padding: var(--space-xs) var(--space-sm);
+      padding: var(--nd-space-xs) var(--nd-space-sm);
     }
 
     /* Drawing controls */
     .drawing-controls {
       display: flex;
       flex-direction: column;
-      gap: var(--space-xs);
+      gap: var(--nd-space-xs);
     }
 
     .brush-mode-buttons {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
-      gap: var(--space-xs);
+      gap: var(--nd-space-xs);
     }
 
     .brush-mode-buttons .btn {
       font-size: 0.65rem;
-      padding: var(--space-xs);
+      padding: var(--nd-space-xs);
     }
 
     .brush-mode-buttons .btn.active {
-      background: var(--color-primary);
+      background: var(--nd-color-primary);
       color: white;
-      border-color: var(--color-primary);
+      border-color: var(--nd-color-primary);
     }
 
     .brush-size-control {
-      padding: var(--space-xs) 0;
+      padding: var(--nd-space-xs) 0;
     }
 
     .drawing-actions {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: var(--space-xs);
+      gap: var(--nd-space-xs);
     }
 
     .drawing-actions .btn {
@@ -2733,7 +2734,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: var(--space-xs);
+      margin-bottom: var(--nd-space-xs);
     }
 
     .threshold-slider {
@@ -2741,7 +2742,7 @@
       height: 6px;
       -webkit-appearance: none;
       appearance: none;
-      background: var(--color-border);
+      background: var(--nd-color-border);
       border-radius: 3px;
       outline: none;
       cursor: pointer;
@@ -2752,7 +2753,7 @@
       appearance: none;
       width: 16px;
       height: 16px;
-      background: var(--color-primary);
+      background: var(--nd-color-primary);
       border-radius: 50%;
       cursor: pointer;
       transition: transform 0.1s;
@@ -2765,7 +2766,7 @@
     .threshold-slider::-moz-range-thumb {
       width: 16px;
       height: 16px;
-      background: var(--color-primary);
+      background: var(--nd-color-primary);
       border-radius: 50%;
       cursor: pointer;
       border: none;
@@ -2777,26 +2778,26 @@
     }
 
     .threshold-slider:disabled::-webkit-slider-thumb {
-      background: var(--color-text-muted);
+      background: var(--nd-color-text-muted);
       cursor: not-allowed;
     }
 
     .threshold-slider:disabled::-moz-range-thumb {
-      background: var(--color-text-muted);
+      background: var(--nd-color-text-muted);
       cursor: not-allowed;
     }
 
     /* Compact preview buttons */
     .preview-buttons {
       display: flex;
-      gap: var(--space-xs);
-      margin-top: var(--space-sm);
+      gap: var(--nd-space-xs);
+      margin-top: var(--nd-space-sm);
     }
 
     .preview-buttons .btn {
       flex: 1;
       font-size: 0.7rem;
-      padding: var(--space-xs) var(--space-sm);
+      padding: var(--nd-space-xs) var(--nd-space-sm);
     }
 
     .preview-buttons .btn svg {
@@ -2808,7 +2809,7 @@
     .param-inline {
       display: flex;
       align-items: center;
-      gap: var(--space-sm);
+      gap: var(--nd-space-sm);
     }
 
     .param-inline input {
@@ -2817,7 +2818,7 @@
 
     .param-inline .unit {
       font-size: 0.7rem;
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       white-space: nowrap;
     }
 
@@ -2831,9 +2832,9 @@
     .pipeline-tabs {
       display: flex;
       gap: 0;
-      padding: 0 var(--space-md);
-      border-bottom: 1px solid var(--color-border);
-      background: var(--color-surface-elevated);
+      padding: 0 var(--nd-space-md);
+      border-bottom: 1px solid var(--nd-color-border);
+      background: var(--nd-color-surface-elevated);
       flex-shrink: 0;
     }
 
@@ -2842,27 +2843,27 @@
       background: none;
       border: none;
       border-bottom: 2px solid transparent;
-      padding: var(--space-sm) var(--space-xs);
+      padding: var(--nd-space-sm) var(--nd-space-xs);
       font-size: 0.7rem;
       font-weight: 500;
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       cursor: pointer;
       white-space: nowrap;
       text-align: center;
-      transition: color var(--transition-fast), border-color var(--transition-fast);
+      transition: color var(--nd-transition-fast), border-color var(--nd-transition-fast);
     }
 
     .pipeline-tab:hover:not(:disabled) {
-      color: var(--color-text);
+      color: var(--nd-color-text);
     }
 
     .pipeline-tab.active {
-      color: var(--color-primary);
-      border-bottom-color: var(--color-primary);
+      color: var(--nd-color-primary);
+      border-bottom-color: var(--nd-color-primary);
     }
 
     .pipeline-tab:disabled {
-      color: var(--color-text-dim);
+      color: var(--nd-color-text-dim);
       cursor: not-allowed;
       opacity: 0.5;
     }
@@ -2895,9 +2896,9 @@
     }
 
     .modal {
-      background: var(--color-surface);
-      border-radius: var(--radius-lg);
-      border: 1px solid var(--color-border);
+      background: var(--nd-color-surface);
+      border-radius: var(--nd-radius-lg);
+      border: 1px solid var(--nd-color-border);
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
       max-width: 500px;
       width: 90%;
@@ -2911,15 +2912,15 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: var(--space-md) var(--space-lg);
-      border-bottom: 1px solid var(--color-border);
+      padding: var(--nd-space-md) var(--nd-space-lg);
+      border-bottom: 1px solid var(--nd-color-border);
     }
 
     .modal-header h3 {
       margin: 0;
       font-size: 1.1rem;
       font-weight: 600;
-      color: var(--color-text);
+      color: var(--nd-color-text);
     }
 
     .modal-close {
@@ -2927,18 +2928,18 @@
       border: none;
       font-size: 1.5rem;
       cursor: pointer;
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       padding: 0;
       line-height: 1;
       transition: color 0.15s;
     }
 
     .modal-close:hover {
-      color: var(--color-text);
+      color: var(--nd-color-text);
     }
 
     .modal-body {
-      padding: var(--space-lg);
+      padding: var(--nd-space-lg);
       overflow-y: auto;
       flex: 1;
     }
@@ -2946,14 +2947,14 @@
     .modal-footer {
       display: flex;
       justify-content: flex-end;
-      gap: var(--space-sm);
-      padding: var(--space-md) var(--space-lg);
-      border-top: 1px solid var(--color-border);
-      background: var(--color-surface-elevated);
+      gap: var(--nd-space-sm);
+      padding: var(--nd-space-md) var(--nd-space-lg);
+      border-top: 1px solid var(--nd-color-border);
+      background: var(--nd-color-surface-elevated);
     }
 
     .settings-section {
-      margin-bottom: var(--space-lg);
+      margin-bottom: var(--nd-space-lg);
     }
 
     .settings-section:last-child {
@@ -2964,26 +2965,26 @@
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: var(--space-xs);
+      gap: var(--nd-space-xs);
       font-size: 0.85rem;
       font-weight: 600;
-      color: var(--color-primary);
-      margin: 0 0 var(--space-sm) 0;
-      padding-bottom: var(--space-xs);
-      border-bottom: 1px solid var(--color-border);
+      color: var(--nd-color-primary);
+      margin: 0 0 var(--nd-space-sm) 0;
+      padding-bottom: var(--nd-space-xs);
+      border-bottom: 1px solid var(--nd-color-border);
     }
 
     .settings-section h4 label {
       display: flex;
       align-items: center;
-      gap: var(--space-xs);
+      gap: var(--nd-space-xs);
       cursor: pointer;
       font-weight: inherit;
       color: inherit;
     }
 
     .settings-section h4 input[type="checkbox"] {
-      accent-color: var(--color-primary);
+      accent-color: var(--nd-color-primary);
     }
 
     .settings-section h4 input[type="checkbox"]:disabled {
@@ -2993,25 +2994,25 @@
 
     .param-hint {
       font-size: 0.7rem;
-      color: var(--color-text-muted);
-      margin-bottom: var(--space-xs);
+      color: var(--nd-color-text-muted);
+      margin-bottom: var(--nd-space-xs);
     }
 
     .param-value-display {
       text-align: center;
       font-size: 0.85rem;
       font-weight: 600;
-      color: var(--color-primary);
-      margin-top: var(--space-xs);
+      color: var(--nd-color-primary);
+      margin-top: var(--nd-space-xs);
     }
 
     /* Method settings container */
     .method-settings {
-      margin-top: var(--space-sm);
-      padding: var(--space-sm);
-      background: var(--color-surface-elevated);
-      border-radius: var(--radius-md);
-      border: 1px solid var(--color-border);
+      margin-top: var(--nd-space-sm);
+      padding: var(--nd-space-sm);
+      background: var(--nd-color-surface-elevated);
+      border-radius: var(--nd-radius-md);
+      border: 1px solid var(--nd-color-border);
     }
 
     .method-settings .param-group:last-child {
@@ -3023,7 +3024,7 @@
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 2px var(--space-sm);
+      gap: 2px var(--nd-space-sm);
     }
 
     .modal-body .param-group > .param-label {
@@ -3051,8 +3052,8 @@
       display: inline-flex;
       align-items: center;
       gap: 3px;
-      margin-left: var(--space-xs);
-      padding: 2px var(--space-sm);
+      margin-left: var(--nd-space-xs);
+      padding: 2px var(--nd-space-sm);
       font-size: 0.65rem;
       border-radius: 10px;
       vertical-align: middle;
@@ -3064,26 +3065,26 @@
     .param-checklist {
       display: flex;
       flex-direction: column;
-      gap: var(--space-xs);
+      gap: var(--nd-space-xs);
       font-size: 0.8rem;
-      margin-bottom: var(--space-sm);
+      margin-bottom: var(--nd-space-sm);
     }
 
     .param-checklist-row {
       display: flex;
       align-items: center;
-      gap: var(--space-xs);
+      gap: var(--nd-space-xs);
     }
 
     .param-checklist label {
       display: flex;
       align-items: center;
-      gap: var(--space-xs);
+      gap: var(--nd-space-xs);
       cursor: pointer;
     }
 
     .param-checklist input[type="checkbox"] {
-      accent-color: var(--color-primary);
+      accent-color: var(--nd-color-primary);
     }
 
     /* Hints break to a new row; inline-warnings stay inline */
@@ -3097,8 +3098,8 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: var(--space-sm);
-      margin-bottom: var(--space-sm);
+      gap: var(--nd-space-sm);
+      margin-bottom: var(--nd-space-sm);
     }
 
     .param-xyz > .param-label {
@@ -3106,13 +3107,13 @@
       min-width: 0;
       font-size: 0.8rem;
       font-weight: 500;
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       margin-bottom: 0;
     }
 
     .param-xyz-inputs {
       display: flex;
-      gap: var(--space-xs);
+      gap: var(--nd-space-xs);
       flex: 0 0 auto;
     }
 
@@ -3121,20 +3122,20 @@
       align-items: center;
       gap: 2px;
       font-size: 0.7rem;
-      color: var(--color-text-dim);
+      color: var(--nd-color-text-dim);
     }
 
     .param-xyz-inputs input[type="number"] {
       width: 52px;
       text-align: center;
-      padding: var(--space-xs) 4px;
+      padding: var(--nd-space-xs) 4px;
       font-size: 0.75rem;
     }
 
     .method-links {
       display: flex;
-      gap: var(--space-xs);
-      margin-bottom: var(--space-sm);
+      gap: var(--nd-space-xs);
+      margin-bottom: var(--nd-space-sm);
     }
 
     .method-links a {
@@ -3142,26 +3143,26 @@
       align-items: center;
       gap: 4px;
       padding: 2px 6px;
-      border-radius: var(--radius-sm);
-      color: var(--color-text-muted);
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
+      border-radius: var(--nd-radius-sm);
+      color: var(--nd-color-text-muted);
+      background: var(--nd-color-surface);
+      border: 1px solid var(--nd-color-border);
       transition: all 0.15s;
       font-size: 0.7rem;
       text-decoration: none;
     }
 
     .method-links a:hover {
-      color: var(--color-primary);
-      border-color: var(--color-primary);
-      background: var(--color-surface-alt);
+      color: var(--nd-color-primary);
+      border-color: var(--nd-color-primary);
+      background: var(--nd-color-surface-alt);
     }
 
     /* Checkbox styling */
     .checkbox-label {
       display: flex;
       align-items: center;
-      gap: var(--space-sm);
+      gap: var(--nd-space-sm);
       cursor: pointer;
       font-size: 0.85rem;
     }
@@ -3170,14 +3171,14 @@
       width: 16px;
       height: 16px;
       cursor: pointer;
-      accent-color: var(--color-primary);
+      accent-color: var(--nd-color-primary);
     }
 
     /* Window controls */
     .viewer-actions {
       display: flex;
       align-items: center;
-      gap: var(--space-sm);
+      gap: var(--nd-space-sm);
       flex-wrap: wrap;
     }
 
@@ -3193,10 +3194,10 @@
       max-width: 80px;
       padding: 3px 3px;
       font-size: 0.7rem;
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-sm);
-      background: var(--color-surface);
-      color: var(--color-text);
+      border: 1px solid var(--nd-color-border);
+      border-radius: var(--nd-radius-sm);
+      background: var(--nd-color-surface);
+      color: var(--nd-color-text);
       text-align: center;
       -moz-appearance: textfield;
     }
@@ -3208,7 +3209,7 @@
     }
 
     .window-input::placeholder {
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       font-size: 0.65rem;
     }
 
@@ -3230,7 +3231,7 @@
       position: absolute;
       width: 100%;
       height: 4px;
-      background: var(--color-border);
+      background: var(--nd-color-border);
       border-radius: 2px;
       pointer-events: none;
       z-index: 1;
@@ -3239,7 +3240,7 @@
     .range-selected {
       position: absolute;
       height: 4px;
-      background: var(--color-primary);
+      background: var(--nd-color-primary);
       border-radius: 2px;
       pointer-events: none;
       z-index: 2;
@@ -3262,7 +3263,7 @@
       appearance: none;
       width: 16px;
       height: 16px;
-      background: var(--color-primary);
+      background: var(--nd-color-primary);
       border-radius: 50%;
       cursor: pointer;
       pointer-events: auto;
@@ -3275,7 +3276,7 @@
     .range-slider::-moz-range-thumb {
       width: 16px;
       height: 16px;
-      background: var(--color-primary);
+      background: var(--nd-color-primary);
       border-radius: 50%;
       cursor: pointer;
       pointer-events: auto;
@@ -3304,7 +3305,7 @@
       align-items: center;
       gap: 4px;
       font-size: 0.7rem;
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       cursor: pointer;
       white-space: nowrap;
     }
@@ -3313,12 +3314,12 @@
       width: 12px;
       height: 12px;
       cursor: pointer;
-      accent-color: var(--color-primary);
+      accent-color: var(--nd-color-primary);
     }
 
     .data-units {
       font-size: 0.7rem;
-      color: var(--color-primary);
+      color: var(--nd-color-primary);
       font-weight: 600;
       white-space: nowrap;
     }
@@ -3331,7 +3332,7 @@
     .header-links {
       display: flex;
       align-items: center;
-      gap: var(--space-sm);
+      gap: var(--nd-space-sm);
     }
 
     .header-link {
@@ -3339,12 +3340,12 @@
       text-decoration: none;
       display: flex;
       align-items: center;
-      gap: var(--space-xs);
+      gap: var(--nd-space-xs);
       background: none;
       border: none;
       cursor: pointer;
       padding: 4px 8px;
-      border-radius: var(--radius-sm);
+      border-radius: var(--nd-radius-sm);
       transition: opacity 0.15s;
       opacity: 0.8;
       font-size: 0.85rem;
@@ -3360,11 +3361,11 @@
     }
 
     .citation-primary {
-      background: var(--color-surface-alt);
-      border: 1px solid var(--color-primary);
-      border-radius: var(--radius-md);
-      padding: var(--space-md);
-      margin-bottom: var(--space-md);
+      background: var(--nd-color-surface-alt);
+      border: 1px solid var(--nd-color-primary);
+      border-radius: var(--nd-radius-md);
+      padding: var(--nd-space-md);
+      margin-bottom: var(--nd-space-md);
     }
 
     .citation-primary .citation-item {
@@ -3373,7 +3374,7 @@
 
     .citation-primary strong {
       font-size: 1.1rem;
-      color: var(--color-primary);
+      color: var(--nd-color-primary);
     }
 
     /* Privacy modal */
@@ -3384,47 +3385,47 @@
     .privacy-highlight {
       display: flex;
       align-items: flex-start;
-      gap: var(--space-md);
-      background: var(--color-surface-alt);
-      border: 1px solid var(--color-primary);
-      border-radius: var(--radius-md);
-      padding: var(--space-md);
-      margin-bottom: var(--space-lg);
+      gap: var(--nd-space-md);
+      background: var(--nd-color-surface-alt);
+      border: 1px solid var(--nd-color-primary);
+      border-radius: var(--nd-radius-md);
+      padding: var(--nd-space-md);
+      margin-bottom: var(--nd-space-lg);
     }
 
     .privacy-highlight strong {
       font-size: 1rem;
-      color: var(--color-primary);
+      color: var(--nd-color-primary);
       display: block;
-      margin-bottom: var(--space-xs);
+      margin-bottom: var(--nd-space-xs);
     }
 
     .privacy-highlight p {
       font-size: 0.85rem;
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       margin: 0;
       line-height: 1.5;
     }
 
     .privacy-modal h4 {
       font-size: 0.9rem;
-      margin: var(--space-md) 0 var(--space-xs);
-      color: var(--color-text);
+      margin: var(--nd-space-md) 0 var(--nd-space-xs);
+      color: var(--nd-color-text);
     }
 
     .privacy-modal p {
       font-size: 0.85rem;
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       line-height: 1.6;
-      margin: 0 0 var(--space-sm);
+      margin: 0 0 var(--nd-space-sm);
     }
 
     .privacy-list {
       font-size: 0.85rem;
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       line-height: 1.8;
-      padding-left: var(--space-lg);
-      margin: 0 0 var(--space-sm);
+      padding-left: var(--nd-space-lg);
+      margin: 0 0 var(--nd-space-sm);
     }
 
     /* About modal */
@@ -3435,68 +3436,68 @@
     .about-highlight {
       display: flex;
       align-items: center;
-      gap: var(--space-md);
-      background: var(--color-surface-alt);
-      border: 1px solid var(--color-primary);
-      border-radius: var(--radius-md);
-      padding: var(--space-md);
-      margin-bottom: var(--space-lg);
+      gap: var(--nd-space-md);
+      background: var(--nd-color-surface-alt);
+      border: 1px solid var(--nd-color-primary);
+      border-radius: var(--nd-radius-md);
+      padding: var(--nd-space-md);
+      margin-bottom: var(--nd-space-lg);
     }
 
     .about-logo {
-      border-radius: var(--radius-sm);
+      border-radius: var(--nd-radius-sm);
       flex-shrink: 0;
     }
 
     .about-highlight strong {
       font-size: 1.1rem;
-      color: var(--color-primary);
+      color: var(--nd-color-primary);
       display: block;
       margin-bottom: 2px;
     }
 
     .about-highlight p {
       font-size: 0.85rem;
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       margin: 0;
       line-height: 1.4;
     }
 
     .about-modal > .modal-body > p {
       font-size: 0.85rem;
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       line-height: 1.6;
-      margin: 0 0 var(--space-md);
+      margin: 0 0 var(--nd-space-md);
     }
 
     .about-modal h4 {
       font-size: 0.9rem;
-      margin: var(--space-md) 0 var(--space-sm);
-      color: var(--color-text);
+      margin: var(--nd-space-md) 0 var(--nd-space-sm);
+      color: var(--nd-color-text);
     }
 
     .about-version-table {
       display: flex;
       flex-direction: column;
-      gap: var(--space-xs);
+      gap: var(--nd-space-xs);
     }
 
     .about-version-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: var(--space-xs) var(--space-sm);
-      background: var(--color-surface-alt);
-      border-radius: var(--radius-sm);
+      padding: var(--nd-space-xs) var(--nd-space-sm);
+      background: var(--nd-color-surface-alt);
+      border-radius: var(--nd-radius-sm);
       font-size: 0.85rem;
     }
 
     .about-version-label {
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
     }
 
     .about-version-label a {
-      color: var(--color-primary);
+      color: var(--nd-color-primary);
       text-decoration: none;
     }
 
@@ -3505,13 +3506,13 @@
     }
 
     .about-version-value {
-      color: var(--color-text);
+      color: var(--nd-color-text);
       font-weight: 500;
       font-variant-numeric: tabular-nums;
     }
 
     .about-version-value a {
-      color: var(--color-primary);
+      color: var(--nd-color-primary);
       text-decoration: none;
     }
 
@@ -3534,46 +3535,46 @@
       padding: 6px 16px;
       font-size: 0.85rem;
       cursor: pointer;
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       border-bottom: 2px solid transparent;
       transition: color 0.15s, border-color 0.15s;
     }
     .modal-tab:hover {
-      color: var(--color-text);
+      color: var(--nd-color-text);
     }
     .modal-tab.active {
-      color: var(--color-primary);
-      border-bottom-color: var(--color-primary);
+      color: var(--nd-color-primary);
+      border-bottom-color: var(--nd-color-primary);
       font-weight: 600;
     }
 
     .command-modal-description {
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       font-size: 0.85rem;
-      margin-bottom: var(--space-sm);
+      margin-bottom: var(--nd-space-sm);
       line-height: 1.5;
     }
 
     .command-modal-description a {
-      color: var(--color-primary);
+      color: var(--nd-color-primary);
       text-decoration: none;
       font-weight: 500;
     }
 
     .command-modal-description a:hover {
       text-decoration: underline;
-      color: var(--color-primary-hover);
+      color: var(--nd-color-primary-hover);
     }
 
     .command-modal-code {
-      background: var(--color-bg-secondary);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-sm);
-      padding: var(--space-md);
+      background: var(--nd-color-bg-secondary);
+      border: 1px solid var(--nd-color-border);
+      border-radius: var(--nd-radius-sm);
+      padding: var(--nd-space-md);
       font-size: 0.8rem;
       white-space: pre-wrap;
       word-break: break-all;
-      color: var(--color-accent-green, #4ade80);
+      color: var(--nd-color-accent-green, #4ade80);
       max-height: 300px;
       overflow-y: auto;
       line-height: 1.6;
@@ -3588,28 +3589,28 @@
 
     .citations-intro {
       font-size: 0.85rem;
-      color: var(--color-text-muted);
-      margin: 0 0 var(--space-lg) 0;
+      color: var(--nd-color-text-muted);
+      margin: 0 0 var(--nd-space-lg) 0;
       line-height: 1.5;
     }
 
     .citation-section {
-      margin-bottom: var(--space-lg);
+      margin-bottom: var(--nd-space-lg);
     }
 
     .citation-section h4 {
       font-size: 0.9rem;
       font-weight: 600;
-      color: var(--color-primary);
-      margin: 0 0 var(--space-sm) 0;
-      padding-bottom: var(--space-xs);
-      border-bottom: 1px solid var(--color-border);
+      color: var(--nd-color-primary);
+      margin: 0 0 var(--nd-space-sm) 0;
+      padding-bottom: var(--nd-space-xs);
+      border-bottom: 1px solid var(--nd-color-border);
     }
 
     .citation-item {
-      margin-bottom: var(--space-md);
-      padding-left: var(--space-sm);
-      border-left: 2px solid var(--color-border);
+      margin-bottom: var(--nd-space-md);
+      padding-left: var(--nd-space-sm);
+      border-left: 2px solid var(--nd-color-border);
     }
 
     .citation-item:last-child {
@@ -3619,13 +3620,13 @@
     .citation-item strong {
       display: block;
       font-size: 0.85rem;
-      color: var(--color-text);
+      color: var(--nd-color-text);
       margin-bottom: 4px;
     }
 
     .citation-item p {
       font-size: 0.8rem;
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       margin: 0 0 4px 0;
       line-height: 1.4;
     }
@@ -3636,7 +3637,7 @@
 
     .citation-item a {
       font-size: 0.75rem;
-      color: var(--color-primary);
+      color: var(--nd-color-primary);
       text-decoration: none;
     }
 
@@ -3647,12 +3648,12 @@
     .citation-ref {
       display: block;
       font-size: 0.7rem;
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       margin-bottom: 4px;
     }
 
     .citation-ref a {
-      color: var(--color-primary);
+      color: var(--nd-color-primary);
       text-decoration: none;
     }
 
@@ -3662,13 +3663,13 @@
 
     .ref-list {
       font-size: 0.8rem;
-      color: var(--color-text-muted);
+      color: var(--nd-color-text-muted);
       margin-bottom: 6px;
       line-height: 1.4;
     }
 
     .ref-list a {
-      color: var(--color-primary);
+      color: var(--nd-color-primary);
       text-decoration: none;
       font-weight: 500;
     }

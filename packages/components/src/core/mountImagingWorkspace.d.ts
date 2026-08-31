@@ -1,3 +1,8 @@
+export type ShellControlAction = 'about' | 'cite' | 'privacy';
+export type ShellTarget = string | Element;
+export type ShellTargetSet = ShellTarget | readonly ShellTarget[];
+export type ShellControlsContract = Partial<Record<ShellControlAction, ShellTargetSet>>;
+
 export interface ImagingWorkspaceConfig {
   document?: Document;
   root?: string | Element;
@@ -8,6 +13,7 @@ export interface ImagingWorkspaceConfig {
   subtitle?: string;
   mark?: string;
   moreAppsHref?: string;
+  controlsContract?: ShellControlsContract;
 }
 
 export function mountImagingWorkspace(config: ImagingWorkspaceConfig): HTMLElement;

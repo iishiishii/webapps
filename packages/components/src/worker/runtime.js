@@ -1,5 +1,8 @@
-export function getOptimalWasmThreads(hardwareConcurrency = globalThis.navigator?.hardwareConcurrency) {
-  if (!globalThis.crossOriginIsolated) return 1;
+export function getOptimalWasmThreads(environment = {}) {
+  const options = typeof environment === 'number' ? { hardwareConcurrency: environment } : environment;
+  const isolated = options.crossOriginIsolated ?? globalThis.crossOriginIsolated;
+  if (!isolated) return 1;
+  const hardwareConcurrency = options.hardwareConcurrency ?? globalThis.navigator?.hardwareConcurrency;
   const available = Number.isFinite(hardwareConcurrency) ? Math.floor(hardwareConcurrency) : 1;
   return Math.max(1, available);
 }

@@ -93,30 +93,6 @@
   --nd-color-primary-glow: rgb(106 163 41 / 18%);
 }
 
-/* Most apps use complete CSS colors. Dicompare uses RGB triplets and has a
-   separate adapter below, so it must be excluded from this token family. */
-:root[data-neurodesk-app]:not([data-neurodesk-shell="react"]) {
-  --color-bg: var(--nd-brand-pale);
-  --color-surface: var(--nd-brand-surface);
-  --color-surface-elevated: var(--nd-brand-unselected);
-  --color-border: var(--nd-brand-border);
-  --color-border-light: var(--nd-brand-border-strong);
-  --color-text: var(--nd-brand-text);
-  --color-text-muted: var(--nd-brand-text-muted);
-  --color-text-dim: var(--nd-brand-text-dim);
-  --color-primary: var(--nd-brand-primary);
-  --color-primary-hover: var(--nd-brand-hover);
-  --color-primary-glow: rgb(145 200 74 / 18%);
-  --color-success: var(--nd-brand-success);
-  --color-success-bg: rgb(63 91 46 / 45%);
-  --color-accent: var(--nd-brand-selected);
-}
-
-:root[data-neurodesk-app][data-neurodesk-theme="light"]:not([data-neurodesk-shell="react"]) {
-  --color-primary-glow: rgb(106 163 41 / 18%);
-  --color-success-bg: rgb(240 247 231 / 90%);
-}
-
 /* Dicompare's Tailwind theme consumes raw RGB triplets. */
 :root[data-neurodesk-shell="react"] {
   color-scheme: dark;
@@ -324,9 +300,6 @@
 /* Local token overrides keep all header copy and icons readable without
    changing the apps' existing markup. */
 [data-neurodesk-app] :is(.app-header, .start-header, .nd-imaging-app-header) {
-  --color-text: var(--nd-brand-menu-text);
-  --color-text-muted: var(--nd-brand-light);
-  --color-text-dim: var(--nd-brand-hover);
   --nd-color-text: var(--nd-brand-menu-text);
   --nd-color-text-muted: var(--nd-brand-light);
   --nd-color-text-dim: var(--nd-brand-hover);
@@ -398,13 +371,6 @@
 /* Consoles remain subordinate to the viewer with the deepest surface and a
    thin green divider. */
 [data-neurodesk-app] :is(.console-container, .nd-console-container) {
-  --color-surface: var(--nd-brand-console-surface);
-  --color-border: var(--nd-brand-border);
-  --color-text: var(--nd-brand-console-text);
-  --color-text-muted: var(--nd-brand-console-text);
-  --color-text-dim: var(--nd-brand-console-time);
-  --color-error: #ff8a80;
-  --color-warning: #f0c777;
   --nd-color-surface: var(--nd-brand-console-surface);
   --nd-color-border: var(--nd-brand-border);
   --nd-color-text: var(--nd-brand-console-text);
@@ -429,8 +395,6 @@
 
 :root[data-neurodesk-app][data-neurodesk-theme="light"]
   :is(.console-container, .nd-console-container) {
-  --color-error: #b42318;
-  --color-warning: #7a4b00;
   --nd-color-error: #b42318;
   --nd-color-warning: #7a4b00;
 }
@@ -606,13 +570,6 @@
   z-index: 1 !important;
   flex: 0 0 auto !important;
   border-bottom: 2px solid var(--nd-brand-primary) !important;
-}
-
-/* QSMbly keeps its app-specific launch and QSMxT links below the shared bar;
-   hide only the two navigation links now supplied by the common chrome. */
-:root[data-neurodesk-shell="static-html"] #landingPage .landing-nav-links
-  :is(a[href="../"], a[href="https://github.com/neurodesk/webapps/tree/main/apps/qsmbly"]) {
-  display: none !important;
 }
 
 .nd-app-utility-bar {
