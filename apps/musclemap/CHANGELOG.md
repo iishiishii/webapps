@@ -1,5 +1,11 @@
 # musclemap
 
+## 1.4.6
+
+### Patch Changes
+
+- Restore the MuscleMap segmentation overlay by preserving label indices when the shared viewer configures the segmentation display range. Add regression coverage for the label-to-colormap mapping.
+
 ## 1.4.5
 
 ### Patch Changes

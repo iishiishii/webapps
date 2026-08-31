@@ -4,7 +4,7 @@ Status: research note, 2026-08-28
 
 ## Recommendation
 
-GitHub Pages does not apply the repository's `_headers` file. MuscleMap 1.4.5 therefore keeps its ORT worker assets under `/musclemap/`, inside the app's isolation service-worker scope. The composite builder still shares ORT with other apps and retains only MuscleMap's checksum-matched local copy. A browser smoke test creates a real ORT session, requests the shared isolated-worker thread policy, and completes one inference.
+GitHub Pages does not apply the repository's `_headers` file. MuscleMap 1.4.6 therefore keeps its ORT worker assets under `/musclemap/`, inside the app's isolation service-worker scope. The composite builder still shares ORT with other apps and retains only MuscleMap's checksum-matched local copy. A browser smoke test creates a real ORT session, requests the shared isolated-worker thread policy, and completes one inference.
 
 MuscleMap already uses ONNX Runtime Web's multithreaded WebAssembly path. Do not add another proxy worker or assume that an ONNX Runtime upgrade will unlock a new CPU-threading mode. Measure `1`, `2`, `4`, and `8` threads and separate time spent in `session.run()` from the JavaScript pipeline. Keep the shared isolated-all-logical-core policy until that benchmark establishes a faster cap.
 

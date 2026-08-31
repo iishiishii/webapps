@@ -1,6 +1,6 @@
 {
   "name": "musclemap",
-  "version": "1.4.5",
+  "version": "1.4.6",
   "private": true,
   "type": "module",
   "description": "MuscleMap — in-browser muscle segmentation and fat metrics.",

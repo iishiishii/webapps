@@ -3,6 +3,7 @@ import { createUint8PreviewNiftiFile } from '@neurodesk/webapp-components/file-i
 
 const LARGE_VOLUME_BYTES = 256 * 1024 ** 2;
 const COMPRESSED_VOLUME_BYTES = 100 * 1024 ** 2;
+const LABEL_COLORMAP_MAX = 255;
 
 export class MuscleMapViewer extends ViewerController {
   constructor(options) {
@@ -34,6 +35,12 @@ export class MuscleMapViewer extends ViewerController {
     const preview = await createUint8PreviewNiftiFile(file);
     this.currentBaseDisplayMode = 'uint8-preview';
     return preview.file;
+  }
+
+  configureSegmentationVolume(index, colormap = 'labels') {
+    super.configureSegmentationVolume(index, colormap);
+    const volume = this.nv?.volumes?.[index];
+    if (volume) volume.cal_max = LABEL_COLORMAP_MAX;
   }
 
   shouldUseUint8Preview(file) {
