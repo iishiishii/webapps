@@ -5,391 +5,98 @@
  * Pipeline: NIfTI parse → orient → resample → normalize → crop → 2D sliding window → postprocess → output
  */
 
-/* global importScripts, ort, localforage, nifti */
+import * as ort from '../wasm/ort.webgpu.bundle.min.mjs';
+import { createWorkerEmitter, fetchModel as fetchModelAsset, installWorkerRouter } from '../vendor/webapp-components/src/worker/index.js';
+import { createNiftiFromData, parseNiftiVolume } from '../vendor/webapp-components/src/file-io/NiftiUtils.js';
+import {
+  computeForegroundBBox,
+  cropVolume,
+  getOrientationTransform,
+  inverseOrient,
+  orientToRAS,
+  resampleVolume,
+  uncropVolume as uncrop,
+} from '../vendor/webapp-components/src/volume/geometry.js';
+import { zScoreNormalize } from '../vendor/webapp-components/src/volume/normalization.js';
 
-importScripts('../wasm/ort.webgpu.min.js');
-importScripts('https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js');
-importScripts('../nifti-js/index.js');
-importScripts('label-codec.js');
-importScripts('asset-integrity.js');
-importScripts('monai-compat.js');
-importScripts('sliding-window-policy.js');
+let localforage;
+let nifti;
+let MuscleMapLabelCodec;
+let MuscleMapAssetIntegrity;
+let MuscleMapMonaiCompat;
+let MuscleMapSlidingWindowPolicy;
+let dependenciesReady;
+
+function loadDependencies() {
+  dependenciesReady ||= Promise.all([
+    import('https://cdn.jsdelivr.net/npm/localforage@1.10.0/+esm'),
+    import('../nifti-js/index.js'),
+    import('./label-codec.js'),
+    import('./asset-integrity.js'),
+    import('./monai-compat.js'),
+    import('./sliding-window-policy.js')
+  ]).then(([localForageModule]) => {
+    localforage = localForageModule.default;
+    nifti = globalThis.nifti;
+    MuscleMapLabelCodec = globalThis.MuscleMapLabelCodec;
+    MuscleMapAssetIntegrity = globalThis.MuscleMapAssetIntegrity;
+    MuscleMapMonaiCompat = globalThis.MuscleMapMonaiCompat;
+    MuscleMapSlidingWindowPolicy = globalThis.MuscleMapSlidingWindowPolicy;
+    if (!localforage || !nifti || !MuscleMapLabelCodec || !MuscleMapAssetIntegrity || !MuscleMapMonaiCompat || !MuscleMapSlidingWindowPolicy) {
+      throw new Error('MuscleMap worker dependencies failed to initialize');
+    }
+    return { localforage, nifti };
+  });
+  return dependenciesReady;
+}
 
 // ==================== Message Helpers ====================
 
-function postProgress(value, text) {
-  self.postMessage({ type: 'progress', value, text });
-}
-
-function postLog(message) {
-  self.postMessage({ type: 'log', message });
-}
-
-function postError(message) {
-  self.postMessage({ type: 'error', message });
-}
-
-function postComplete() {
-  self.postMessage({ type: 'complete' });
-}
+const workerMessages = createWorkerEmitter(self);
+const {
+  complete: postComplete,
+  error: postError,
+  log: postLog,
+  progress: postProgress,
+} = workerMessages;
 
 function postStageData(stage, niftiData, description, provenance = null) {
-  self.postMessage(
-    { type: 'stageData', stage, niftiData, description, provenance },
-    [niftiData]
-  );
+  workerMessages.stageData(stage, niftiData, description, { provenance });
 }
 
 function postDetectedLabels(labels) {
-  self.postMessage({ type: 'detectedLabels', labels });
+  workerMessages.emit('detectedLabels', { labels }, { transfer: false });
 }
 
 function postMetrics(metrics) {
-  self.postMessage({ type: 'metrics', metrics });
+  workerMessages.emit('metrics', { metrics }, { transfer: false });
 }
 
 // ==================== NIfTI Parsing ====================
 
-function decompressIfNeeded(data) {
-  const bytes = new Uint8Array(data);
-  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
-    if (typeof nifti !== 'undefined' && nifti.isCompressed) {
-      if (nifti.isCompressed(bytes.buffer)) {
-        return new Uint8Array(nifti.decompress(bytes.buffer));
-      }
-    }
-    throw new Error('Gzipped NIfTI detected but decompression not available');
-  }
-  return bytes;
-}
-
 function parseNiftiInput(arrayBuffer) {
-  const data = decompressIfNeeded(arrayBuffer);
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-
-  const dims = [];
-  for (let i = 0; i < 8; i++) dims.push(view.getInt16(40 + i * 2, true));
-  const nx = dims[1], ny = dims[2], nz = dims[3];
-
-  const pixDims = [];
-  for (let i = 0; i < 8; i++) pixDims.push(view.getFloat32(76 + i * 4, true));
-
-  const datatype = view.getInt16(70, true);
-  const voxOffset = view.getFloat32(108, true);
-  const sclSlope = view.getFloat32(112, true) || 1;
-  const sclInter = view.getFloat32(116, true) || 0;
-  const dataStart = Math.ceil(voxOffset);
-  const nTotal = nx * ny * nz;
-
-  const imageData = new Float32Array(nTotal);
-  switch (datatype) {
-    case 2:
-      for (let i = 0; i < nTotal; i++) imageData[i] = data[dataStart + i] * sclSlope + sclInter;
-      break;
-    case 4:
-      for (let i = 0; i < nTotal; i++) imageData[i] = view.getInt16(dataStart + i * 2, true) * sclSlope + sclInter;
-      break;
-    case 8:
-      for (let i = 0; i < nTotal; i++) imageData[i] = view.getInt32(dataStart + i * 4, true) * sclSlope + sclInter;
-      break;
-    case 16:
-      for (let i = 0; i < nTotal; i++) imageData[i] = view.getFloat32(dataStart + i * 4, true) * sclSlope + sclInter;
-      break;
-    case 64:
-      for (let i = 0; i < nTotal; i++) imageData[i] = view.getFloat64(dataStart + i * 8, true) * sclSlope + sclInter;
-      break;
-    case 512:
-      for (let i = 0; i < nTotal; i++) imageData[i] = view.getUint16(dataStart + i * 2, true) * sclSlope + sclInter;
-      break;
-    default:
-      throw new Error(`Unsupported NIfTI datatype: ${datatype}`);
-  }
-
-  // Extract affine matrix (prefer sform)
-  const affine = extractAffine(view);
-
-  const headerSize = dataStart;
-  const headerBytes = new ArrayBuffer(headerSize);
-  new Uint8Array(headerBytes).set(data.slice(0, headerSize));
-
-  return {
-    imageData,
-    dims: [nx, ny, nz],
-    voxelSize: [Math.abs(pixDims[1]) || 1, Math.abs(pixDims[2]) || 1, Math.abs(pixDims[3]) || 1],
-    headerBytes,
-    affine
-  };
-}
-
-function extractAffine(view) {
-  const sformCode = view.getInt16(254, true);
-  const qformCode = view.getInt16(252, true);
-
-  if (sformCode > 0) {
-    const affine = [new Float64Array(4), new Float64Array(4), new Float64Array(4), new Float64Array([0, 0, 0, 1])];
-    for (let i = 0; i < 4; i++) {
-      affine[0][i] = view.getFloat32(280 + i * 4, true);
-      affine[1][i] = view.getFloat32(296 + i * 4, true);
-      affine[2][i] = view.getFloat32(312 + i * 4, true);
-    }
-    return affine;
-  }
-
-  if (qformCode > 0) {
-    const pixDims = [];
-    for (let i = 0; i < 4; i++) pixDims.push(view.getFloat32(76 + i * 4, true));
-    const qb = view.getFloat32(256, true);
-    const qc = view.getFloat32(260, true);
-    const qd = view.getFloat32(264, true);
-    const qx = view.getFloat32(268, true);
-    const qy = view.getFloat32(272, true);
-    const qz = view.getFloat32(276, true);
-    const sqr = qb * qb + qc * qc + qd * qd;
-    const qa = sqr > 1.0 ? 0.0 : Math.sqrt(1.0 - sqr);
-    const R = [
-      [qa*qa+qb*qb-qc*qc-qd*qd, 2*(qb*qc-qa*qd), 2*(qb*qd+qa*qc)],
-      [2*(qb*qc+qa*qd), qa*qa+qc*qc-qb*qb-qd*qd, 2*(qc*qd-qa*qb)],
-      [2*(qb*qd-qa*qc), 2*(qc*qd+qa*qb), qa*qa+qd*qd-qb*qb-qc*qc]
-    ];
-    const qfac = pixDims[0] < 0 ? -1 : 1;
-    return [
-      new Float64Array([R[0][0]*pixDims[1], R[0][1]*pixDims[2], R[0][2]*pixDims[3]*qfac, qx]),
-      new Float64Array([R[1][0]*pixDims[1], R[1][1]*pixDims[2], R[1][2]*pixDims[3]*qfac, qy]),
-      new Float64Array([R[2][0]*pixDims[1], R[2][1]*pixDims[2], R[2][2]*pixDims[3]*qfac, qz]),
-      new Float64Array([0, 0, 0, 1])
-    ];
-  }
-
-  const pixDims = [];
-  for (let i = 0; i < 4; i++) pixDims.push(view.getFloat32(76 + i * 4, true));
-  return [
-    new Float64Array([pixDims[1] || 1, 0, 0, 0]),
-    new Float64Array([0, pixDims[2] || 1, 0, 0]),
-    new Float64Array([0, 0, pixDims[3] || 1, 0]),
-    new Float64Array([0, 0, 0, 1])
-  ];
+  return parseNiftiVolume(arrayBuffer, { decompress: buffer => nifti.decompress(buffer) });
 }
 
 // ==================== NIfTI Output ====================
 
 function createOutputNifti(labelData, sourceHeader, dims) {
-  if (!(labelData instanceof Uint8Array) && !(labelData instanceof Uint16Array)) {
-    throw new Error('NIfTI label output must be Uint8Array or Uint16Array');
-  }
-  const srcView = new DataView(sourceHeader);
-  const voxOffset = srcView.getFloat32(108, true);
-  const headerSize = Math.ceil(voxOffset);
-  const bytesPerVoxel = labelData.BYTES_PER_ELEMENT;
-
-  const buffer = new ArrayBuffer(headerSize + labelData.length * bytesPerVoxel);
-  const destBytes = new Uint8Array(buffer);
-  const destView = new DataView(buffer);
-
-  destBytes.set(new Uint8Array(sourceHeader).slice(0, headerSize));
-
-  destView.setInt16(70, bytesPerVoxel === 1 ? 2 : 512, true);
-  destView.setInt16(72, bytesPerVoxel * 8, true);
-
-  // Update dims if provided
-  if (dims) {
-    destView.setInt16(40, 3, true);
-    destView.setInt16(42, dims[0], true);
-    destView.setInt16(44, dims[1], true);
-    destView.setInt16(46, dims[2], true);
-    destView.setInt16(48, 1, true);
-  }
-
-  destView.setFloat32(112, 1, true);  // scl_slope
-  destView.setFloat32(116, 0, true);  // scl_inter
-
-  let maxLabel = 0;
-  if (bytesPerVoxel === 1) {
-    new Uint8Array(buffer, headerSize).set(labelData);
-    for (let offset = 0; offset < labelData.length; offset++) maxLabel = Math.max(maxLabel, labelData[offset]);
-  } else {
-    for (let offset = 0; offset < labelData.length; offset++) {
-      const value = labelData[offset];
-      destView.setUint16(headerSize + offset * 2, value, true);
-      maxLabel = Math.max(maxLabel, value);
-    }
-  }
-  destView.setFloat32(124, Math.max(1, maxLabel), true);
-  destView.setFloat32(128, 0, true);
-  return buffer;
+  return createNiftiFromData(labelData, sourceHeader, { dims });
 }
 
 // ==================== Preprocessing ====================
 
-function getOrientationTransform(affine) {
-  const mat = [
-    [affine[0][0], affine[0][1], affine[0][2]],
-    [affine[1][0], affine[1][1], affine[1][2]],
-    [affine[2][0], affine[2][1], affine[2][2]]
-  ];
 
-  const perm = [0, 0, 0];
-  const flip = [false, false, false];
-  const used = [false, false, false];
 
-  for (let outAxis = 0; outAxis < 3; outAxis++) {
-    let bestAxis = -1;
-    let bestVal = -1;
-    for (let inAxis = 0; inAxis < 3; inAxis++) {
-      if (used[inAxis]) continue;
-      const val = Math.abs(mat[outAxis][inAxis]);
-      if (val > bestVal) {
-        bestVal = val;
-        bestAxis = inAxis;
-      }
-    }
-    perm[outAxis] = bestAxis;
-    flip[outAxis] = mat[outAxis][bestAxis] < 0;
-    used[bestAxis] = true;
-  }
 
-  return { perm, flip };
-}
-
-function orientToRAS(data, dims, perm, flip) {
-  const [nx, ny, nz] = dims;
-  const srcDims = [nx, ny, nz];
-  const dstDims = [srcDims[perm[0]], srcDims[perm[1]], srcDims[perm[2]]];
-  const [dx, dy, dz] = dstDims;
-  const result = new Float32Array(dx * dy * dz);
-
-  for (let oz = 0; oz < dz; oz++) {
-    for (let oy = 0; oy < dy; oy++) {
-      for (let ox = 0; ox < dx; ox++) {
-        const coords = [ox, oy, oz];
-        const src = [0, 0, 0];
-        for (let i = 0; i < 3; i++) {
-          src[perm[i]] = flip[i] ? (dstDims[i] - 1 - coords[i]) : coords[i];
-        }
-        const srcIdx = src[0] + src[1] * nx + src[2] * nx * ny;
-        const dstIdx = ox + oy * dx + oz * dx * dy;
-        result[dstIdx] = data[srcIdx];
-      }
-    }
-  }
-
-  return { data: result, dims: dstDims };
-}
-
-function resampleVolume(data, dims, srcSpacing, tgtSpacing) {
-  const [nx, ny, nz] = dims;
-  const actualTarget = tgtSpacing.map((t, i) => t < 0 ? srcSpacing[i] : t);
-
-  const newDims = [
-    Math.round(nx * srcSpacing[0] / actualTarget[0]),
-    Math.round(ny * srcSpacing[1] / actualTarget[1]),
-    Math.round(nz * srcSpacing[2] / actualTarget[2])
-  ];
-  const [nnx, nny, nnz] = newDims;
-  const result = new Float32Array(nnx * nny * nnz);
-
-  const scaleX = (nx - 1) / Math.max(nnx - 1, 1);
-  const scaleY = (ny - 1) / Math.max(nny - 1, 1);
-  const scaleZ = (nz - 1) / Math.max(nnz - 1, 1);
-
-  for (let z = 0; z < nnz; z++) {
-    const sz = z * scaleZ;
-    const z0 = Math.floor(sz);
-    const z1 = Math.min(z0 + 1, nz - 1);
-    const wz = sz - z0;
-    for (let y = 0; y < nny; y++) {
-      const sy = y * scaleY;
-      const y0 = Math.floor(sy);
-      const y1 = Math.min(y0 + 1, ny - 1);
-      const wy = sy - y0;
-      for (let x = 0; x < nnx; x++) {
-        const sx = x * scaleX;
-        const x0 = Math.floor(sx);
-        const x1 = Math.min(x0 + 1, nx - 1);
-        const wx = sx - x0;
-
-        const c000 = data[x0 + y0*nx + z0*nx*ny];
-        const c100 = data[x1 + y0*nx + z0*nx*ny];
-        const c010 = data[x0 + y1*nx + z0*nx*ny];
-        const c110 = data[x1 + y1*nx + z0*nx*ny];
-        const c001 = data[x0 + y0*nx + z1*nx*ny];
-        const c101 = data[x1 + y0*nx + z1*nx*ny];
-        const c011 = data[x0 + y1*nx + z1*nx*ny];
-        const c111 = data[x1 + y1*nx + z1*nx*ny];
-
-        const c00 = c000*(1-wx) + c100*wx;
-        const c01 = c001*(1-wx) + c101*wx;
-        const c10 = c010*(1-wx) + c110*wx;
-        const c11 = c011*(1-wx) + c111*wx;
-        const c0 = c00*(1-wy) + c10*wy;
-        const c1 = c01*(1-wy) + c11*wy;
-
-        result[x + y*nnx + z*nnx*nny] = c0*(1-wz) + c1*wz;
-      }
-    }
-  }
-
-  return { data: result, dims: newDims, spacing: actualTarget };
-}
-
-function zScoreNormalizeNonzero(data) {
-  const n = data.length;
-  let sum = 0, count = 0;
-  for (let i = 0; i < n; i++) {
-    if (data[i] !== 0) { sum += data[i]; count++; }
-  }
-  if (count === 0) return new Float32Array(n);
-  const mean = sum / count;
-  let sumSq = 0;
-  for (let i = 0; i < n; i++) {
-    if (data[i] !== 0) { const d = data[i] - mean; sumSq += d * d; }
-  }
-  const std = Math.sqrt(sumSq / count) || 1;
-  const result = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    if (data[i] !== 0) result[i] = (data[i] - mean) / std;
-  }
-  return result;
-}
-
-function cropForeground(data, dims, margin) {
-  const [nx, ny, nz] = dims;
-  let minX = nx, maxX = 0, minY = ny, maxY = 0, minZ = nz, maxZ = 0;
-
-  for (let z = 0; z < nz; z++) {
-    for (let y = 0; y < ny; y++) {
-      for (let x = 0; x < nx; x++) {
-        if (data[x + y*nx + z*nx*ny] !== 0) {
-          if (x < minX) minX = x; if (x > maxX) maxX = x;
-          if (y < minY) minY = y; if (y > maxY) maxY = y;
-          if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
-        }
-      }
-    }
-  }
-
-  if (maxX < minX) return { data: new Float32Array(0), dims: [0,0,0], origin: [0,0,0] };
-
-  const ox = Math.max(0, minX - margin);
-  const oy = Math.max(0, minY - margin);
-  const oz = Math.max(0, minZ - margin);
-  const ex = Math.min(nx, maxX + margin + 1);
-  const ey = Math.min(ny, maxY + margin + 1);
-  const ez = Math.min(nz, maxZ + margin + 1);
-  const cnx = ex - ox, cny = ey - oy, cnz = ez - oz;
-
-  const result = new Float32Array(cnx * cny * cnz);
-  for (let z = 0; z < cnz; z++) {
-    for (let y = 0; y < cny; y++) {
-      const srcOff = (z+oz)*nx*ny + (y+oy)*nx + ox;
-      const dstOff = z*cnx*cny + y*cnx;
-      result.set(data.subarray(srcOff, srcOff + cnx), dstOff);
-    }
-  }
-
-  return { data: result, dims: [cnx, cny, cnz], origin: [ox, oy, oz] };
-}
 
 // ==================== Sliding Window ====================
+
+function cropForeground(data, dims, margin) {
+  const bbox = computeForegroundBBox(data, dims, margin);
+  if (!bbox) return { data: new Float32Array(0), dims: [0, 0, 0], origin: [0, 0, 0] };
+  return cropVolume(data, dims, bbox);
+}
 
 function computeGaussianWeightMap(h, w) {
   return MuscleMapSlidingWindowPolicy.computeGaussianWeightMap(h, w);
@@ -400,10 +107,6 @@ function computeTilePositions(imgH, imgW, patchH, patchW, overlap) {
 }
 
 // ==================== Postprocessing ====================
-
-function connectedComponents3D(binaryMask, dims) {
-  return MuscleMapMonaiCompat.connectedComponents3D6(binaryMask, dims);
-}
 
 function perLabelLargestComponent(labelVolume, dims, numLabels, progressBase = 0.85, progressSpan = 0.10) {
   const [nx, ny, nz] = dims;
@@ -477,7 +180,7 @@ function perLabelLargestComponent(labelVolume, dims, numLabels, progressBase = 0
       }
     }
 
-    const { labels: ccLabels, numComponents } = connectedComponents3D(mask, [boxNx, boxNy, boxNz]);
+    const { labels: ccLabels, numComponents } = MuscleMapMonaiCompat.connectedComponents3D6(mask, [boxNx, boxNy, boxNz]);
 
     if (numComponents <= 1) {
       for (let z = minZ[label]; z <= maxZ[label]; z++) {
@@ -530,20 +233,6 @@ function perLabelLargestComponent(labelVolume, dims, numLabels, progressBase = 0
 
 // ==================== Inverse Transform ====================
 
-function uncrop(croppedData, croppedDims, fullDims, origin) {
-  const [nx, ny, nz] = fullDims;
-  const [cnx, cny, cnz] = croppedDims;
-  const [ox, oy, oz] = origin;
-  const result = new Uint8Array(nx * ny * nz);
-  for (let z = 0; z < cnz; z++) {
-    for (let y = 0; y < cny; y++) {
-      const srcOff = z*cnx*cny + y*cnx;
-      const dstOff = (z+oz)*nx*ny + (y+oy)*nx + ox;
-      result.set(croppedData.subarray(srcOff, srcOff + cnx), dstOff);
-    }
-  }
-  return result;
-}
 
 function resampleLabelsNearest(data, dims, tgtDims) {
   const [nx, ny, nz] = dims;
@@ -565,26 +254,6 @@ function resampleLabelsNearest(data, dims, tgtDims) {
   return result;
 }
 
-function inverseOrient(data, dims, perm, flip, origDims) {
-  const [dx, dy, dz] = dims;
-  const [nx, ny, nz] = origDims;
-  const result = new Uint8Array(nx * ny * nz);
-  for (let oz = 0; oz < dz; oz++) {
-    for (let oy = 0; oy < dy; oy++) {
-      for (let ox = 0; ox < dx; ox++) {
-        const coords = [ox, oy, oz];
-        const src = [0, 0, 0];
-        for (let i = 0; i < 3; i++) {
-          src[perm[i]] = flip[i] ? (dims[i] - 1 - coords[i]) : coords[i];
-        }
-        const srcIdx = ox + oy*dx + oz*dx*dy;
-        const dstIdx = src[0] + src[1]*nx + src[2]*nx*ny;
-        result[dstIdx] = data[srcIdx];
-      }
-    }
-  }
-  return result;
-}
 
 function applyInverseTransforms(labels, workingDims, resampledDims, cropOrigin, needsResample, rasDims, isIdentity, perm, flip, origDims) {
   let outputLabels = uncrop(labels, workingDims, resampledDims, cropOrigin);
@@ -635,16 +304,30 @@ async function fetchModel(asset, modelName, progressBase, progressSpan) {
     let lastReportedPercent = -1;
     try {
       for (const source of sources) {
-        const response = await fetch(source.url, { cache: attempt === 1 ? 'no-store' : 'reload' });
-        if (!response.ok) throw new Error(`Failed to fetch model: ${response.status} ${response.statusText}`);
-        const reader = response.body.getReader();
         const partStart = received;
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (received + value.length > data.length) throw new Error('Downloaded model exceeds the declared byte length');
-          data.set(value, received);
-          received += value.length;
+        const part = await fetchModelAsset(
+          {
+            url: source.url,
+            integrity: { bytes: source.bytes, sha256: source.sha256 }
+          },
+          {
+            requestCache: attempt === 1 ? 'no-store' : 'reload',
+            onProgress: ({ received: partReceived }) => {
+              const dlProgress = (partStart + partReceived) / asset.bytes;
+              const totalReceived = partStart + partReceived;
+              const percent = Math.floor(dlProgress * 100);
+              if (percent === lastReportedPercent) return;
+              lastReportedPercent = percent;
+              const mb = (totalReceived / 1048576).toFixed(1);
+              const totalMb = (asset.bytes / 1048576).toFixed(0);
+              postProgress(progressBase + dlProgress * progressSpan, `Downloading ${displayName} (${mb}/${totalMb} MB)`);
+            }
+          }
+        );
+        if (received + part.byteLength > data.length) throw new Error('Downloaded model exceeds the declared byte length');
+        data.set(new Uint8Array(part), received);
+        received += part.byteLength;
+        if (part.byteLength === source.bytes) {
           const dlProgress = received / asset.bytes;
           const percent = Math.floor(dlProgress * 100);
           if (percent !== lastReportedPercent) {
@@ -653,9 +336,6 @@ async function fetchModel(asset, modelName, progressBase, progressSpan) {
             const totalMb = (asset.bytes / 1048576).toFixed(0);
             postProgress(progressBase + dlProgress * progressSpan, `Downloading ${displayName} (${mb}/${totalMb} MB)`);
           }
-        }
-        if (received - partStart < source.bytes) {
-          throw new Error(`Downloaded model asset is unexpectedly small: ${displayName}`);
         }
         await MuscleMapAssetIntegrity.verifyAssetBuffer(data.slice(partStart, received).buffer, source);
       }
@@ -718,7 +398,7 @@ function prepareSourceChunk(data, dims, affine, targetSpacing, cropMargin) {
   const spaced = needsResample
     ? MuscleMapMonaiCompat.resampleVolume(oriented.data, oriented.dims, oriented.affine, targetSpacing)
     : { data: oriented.data, dims: oriented.dims, affine: oriented.affine, spacing: sourceSpacing };
-  const normalized = zScoreNormalizeNonzero(spaced.data);
+  const normalized = zScoreNormalize(spaced.data, { nonzeroOnly: true });
   const cropped = cropForeground(normalized, spaced.dims, cropMargin);
   if (!cropped.data.length) throw new Error('No foreground voxels found in source chunk');
   return {
@@ -2049,7 +1729,7 @@ async function runInference(config) {
 
   postProgress(0.10, 'Normalizing...');
   postLog('Z-score normalizing (nonzero voxels)...');
-  currentData = zScoreNormalizeNonzero(currentData);
+  currentData = zScoreNormalize(currentData, { nonzeroOnly: true });
 
   postProgress(0.12, 'Cropping foreground...');
   const cropped = cropForeground(currentData, currentDims, CROP_MARGIN);
@@ -2371,13 +2051,15 @@ async function runInference(config) {
 
 // ==================== Message Handler ====================
 
-self.onmessage = async (e) => {
-  const { type, data } = e.data;
+installWorkerRouter({
+  scope: self,
+  getServices: loadDependencies,
+  handle: async ({ type, data, ...message }) => {
 
   switch (type) {
     case 'init':
       try {
-        self._appVersion = e.data.version || '';
+        self._appVersion = message.version || '';
         ort.env.wasm.numThreads = getOptimalWasmThreads();
         ort.env.wasm.wasmPaths = '../wasm/';
 
@@ -2403,7 +2085,7 @@ self.onmessage = async (e) => {
           storeName: 'models'
         });
 
-        self.postMessage({ type: 'initialized', webgpuAvailable: self._useWebGPU });
+        workerMessages.initialized({ webgpuAvailable: self._useWebGPU });
       } catch (error) {
         postError(`Initialization failed: ${error.message}`);
       }
@@ -2436,4 +2118,5 @@ self.onmessage = async (e) => {
       }
       break;
   }
-};
+  }
+});

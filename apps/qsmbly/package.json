@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "python3 -m http.server 8080",
     "vendor": "node ../../scripts/vendor-components.mjs --dest .",
-    "predev": "pnpm vendor",
-    "prebuild": "pnpm vendor && bash build.sh",
+    "runtime-support": "node ../../scripts/vendor-runtime-support.mjs --dest .",
+    "predev": "pnpm vendor && pnpm runtime-support",
+    "prebuild": "pnpm vendor && pnpm runtime-support && bash build.sh",
     "build": "node ../../scripts/build-static.mjs",
     "lint": "node ../../scripts/check-app-js.mjs .",
-    "pretest": "pnpm vendor",
+    "pretest": "pnpm vendor && pnpm runtime-support",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"

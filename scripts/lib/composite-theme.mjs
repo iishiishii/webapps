@@ -26,6 +26,7 @@ export function hasIconLink(html) {
 
 export function injectCompositeTheme(html, {
   appId,
+  shell = 'static-html',
   title,
   description,
   version,
@@ -42,7 +43,7 @@ export function injectCompositeTheme(html, {
   if (!appIdPattern.test(appId)) throw new Error(`Invalid app id: ${appId}`);
   if (typeof href !== 'string' || !href.trim()) throw new Error('Theme href must be a non-empty string');
   for (const [label, value] of Object.entries({
-    title, description, version, measurementId, themeHref, shellHref, analyticsHref, moreAppsHref, iconHref,
+    title, description, version, shell, measurementId, themeHref, shellHref, analyticsHref, moreAppsHref, iconHref,
   })) {
     if (typeof value !== 'string' || !value.trim()) {
       throw new Error(`${label} must be a non-empty string`);
@@ -94,7 +95,7 @@ export function injectCompositeTheme(html, {
   if (!/<html\b[^>]*\bdata-neurodesk-app=/i.test(themed)) {
     themed = themed.replace(
       /<html\b/i,
-      `<html data-neurodesk-app="${escapeAttribute(appId)}" data-neurodesk-theme="dark"`,
+      `<html data-neurodesk-app="${escapeAttribute(appId)}" data-neurodesk-shell="${escapeAttribute(shell)}" data-neurodesk-theme="dark"`,
     );
   } else if (!/<html\b[^>]*\bdata-neurodesk-theme=/i.test(themed)) {
     themed = themed.replace(/<html\b/i, '<html data-neurodesk-theme="dark"');
@@ -118,7 +119,7 @@ export function injectCompositeTheme(html, {
     const sourceHref = `https://github.com/neurodesk/webapps/tree/main/apps/${appId}`;
     themed = themed.replace(
       /<\/head>/i,
-      `  <script defer src="${escapeAttribute(shellHref)}" data-neurodesk-app-shell data-app-id="${escapeAttribute(appId)}" data-app-title="${escapeAttribute(title)}" data-app-description="${escapeAttribute(description)}" data-app-version="${escapeAttribute(version)}" data-ga4-measurement-id="${escapeAttribute(measurementId)}" data-analytics-href="${escapeAttribute(analyticsHref)}" data-more-apps-href="${escapeAttribute(moreAppsHref)}" data-source-href="${escapeAttribute(sourceHref)}"></script>\n</head>`,
+      `  <script type="module" src="${escapeAttribute(shellHref)}" data-neurodesk-app-shell data-app-id="${escapeAttribute(appId)}" data-app-shell="${escapeAttribute(shell)}" data-app-title="${escapeAttribute(title)}" data-app-description="${escapeAttribute(description)}" data-app-version="${escapeAttribute(version)}" data-ga4-measurement-id="${escapeAttribute(measurementId)}" data-analytics-href="${escapeAttribute(analyticsHref)}" data-more-apps-href="${escapeAttribute(moreAppsHref)}" data-source-href="${escapeAttribute(sourceHref)}"></script>\n</head>`,
     );
   }
 

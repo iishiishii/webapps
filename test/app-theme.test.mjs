@@ -53,11 +53,11 @@ test('core UI pairings meet WCAG AA text contrast', () => {
 });
 
 test('disabled controls keep full opacity and readable text', () => {
-  assert.match(css, /\[data-neurodesk-app\] :is\([^}]*:disabled[^}]*\)\s*\{[^}]*opacity:\s*1/s);
+  assert.match(css, /\[data-neurodesk-app\] :is\(button:disabled, input:disabled, select:disabled, textarea:disabled\)\s*\{[^}]*opacity:\s*1/s);
 });
 
-test('SurfAnnotate legacy light roles are bridged into the shared dark palette', () => {
-  assert.match(css, /:root\[data-neurodesk-app="surfannotate"\]\[data-neurodesk-theme="dark"\]\s*\{[^}]*--nd-brand-white:\s*var\(--nd-brand-surface\)/s);
+test('static HTML legacy light roles are bridged into the shared dark palette', () => {
+  assert.match(css, /:root\[data-neurodesk-shell="static-html"\]\[data-neurodesk-theme="dark"\]\s*\{[^}]*--nd-brand-white:\s*var\(--nd-brand-surface\)/s);
   assert.match(css, /:is\(\.workflow-help, \.layer-list li, \.start-footer\)\s*\{[^}]*background:\s*var\(--nd-brand-pale\)/s);
   assert.match(css, /#controls\s+:is\(select, input\[type="text"\], input\[type="number"\]\)\s*\{[^}]*background:\s*var\(--nd-brand-unselected\)/s);
 });

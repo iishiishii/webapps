@@ -6,49 +6,53 @@ Real `@neurodesk/webapp-components` imports per app (import-map aliases excluded
 Apps absent from a column ship their own code for that concern or do not need it;
 the fork ratchet in `test/component-forks.test.mjs` lists which of those are forks.
 
-| App | (root) | core/mount-imaging-workspace | file-io | styles/base.css | ui | volume |
-| --- | --- | --- | --- | --- | --- | --- |
-| musclemap | ✓ |  | ✓ |  | ✓ |  |
-| vesselboost | ✓ |  | ✓ |  | ✓ | ✓ |
-| spinalcordtoolbox | ✓ |  | ✓ |  | ✓ | ✓ |
-| calmar | ✓ |  | ✓ |  | ✓ |  |
-| qsmbly | ✓ |  | ✓ |  | ✓ |  |
-| seedseg |  |  | ✓ |  | ✓ |  |
-| dicompare |  |  |  |  | ✓ |  |
-| deface |  | ✓ |  | ✓ |  |  |
-| easy-mp2rage |  |  |  |  |  |  |
-| niimath |  | ✓ |  | ✓ |  |  |
-| dicom2vid |  |  |  |  |  |  |
-| browserqc |  | ✓ |  | ✓ |  |  |
-| surfannotate |  | ✓ |  | ✓ |  |  |
-| zarro |  | ✓ |  | ✓ |  |  |
+| App | (root) | core/mount-imaging-workspace | file-io | pipeline | styles/base.css | ui | viewer | volume |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| musclemap | ✓ |  | ✓ |  |  | ✓ |  |  |
+| vesselboost | ✓ |  | ✓ | ✓ |  | ✓ |  | ✓ |
+| spinalcordtoolbox | ✓ |  | ✓ |  |  | ✓ | ✓ | ✓ |
+| calmar | ✓ |  | ✓ |  |  | ✓ | ✓ |  |
+| qsmbly | ✓ |  | ✓ |  |  | ✓ |  |  |
+| seedseg | ✓ |  | ✓ |  |  | ✓ |  |  |
+| dicompare |  |  |  |  |  | ✓ |  |  |
+| deface |  | ✓ |  |  | ✓ |  |  |  |
+| easy-mp2rage |  |  |  |  |  |  |  |  |
+| niimath |  | ✓ |  |  | ✓ |  |  |  |
+| dicom2vid |  |  |  |  |  |  |  |  |
+| browserqc |  | ✓ |  |  | ✓ |  |  |  |
+| surfannotate |  | ✓ |  |  | ✓ |  |  |  |
+| zarro |  | ✓ |  |  | ✓ |  |  |  |
 
 ## Import sites
 
 - **musclemap**
-  - `(root)`: test/ui-progress-parity.test.js, web/index.html
-  - `file-io`: web/harness.html, web/js/controllers/DicomController.js, web/js/controllers/FileIOController.js, web/js/controllers/InferenceExecutor.js, web/js/modules/ui/MetricsSummary.js, web/js/musclemap-app.js
+  - `(root)`: test/ui-progress-parity.test.js, web/index.html, web/js/controllers/MuscleMapPipeline.js, web/js/controllers/MuscleMapViewer.js
+  - `file-io`: web/harness.html, web/js/controllers/DicomController.js, web/js/controllers/FileIOController.js, web/js/controllers/MuscleMapViewer.js, web/js/modules/ui/MetricsSummary.js, web/js/musclemap-app.js
   - `ui`: e2e/progress.spec.js, web/harness.html, web/js/musclemap-app.js
 - **vesselboost**
-  - `(root)`: web/index.html
-  - `file-io`: web/harness.html, web/js/controllers/DicomController.js, web/js/controllers/FileIOController.js, web/js/controllers/InferenceExecutor.js, web/js/vesselboost-app.js
+  - `(root)`: web/index.html, web/js/controllers/VesselBoostPipeline.js, web/js/controllers/VesselBoostViewer.js
+  - `file-io`: web/harness.html, web/js/controllers/DicomController.js, web/js/controllers/FileIOController.js, web/js/vesselboost-app.js
+  - `pipeline`: scripts/test_pipeline_graph.mjs
   - `ui`: web/harness.html, web/js/vesselboost-app.js
   - `volume`: web/js/vesselboost-app.js
 - **spinalcordtoolbox**
-  - `(root)`: web/index.html
-  - `file-io`: web/harness.html, web/js/controllers/DicomController.js, web/js/controllers/InferenceExecutor.js
+  - `(root)`: web/index.html, web/js/controllers/SctPipeline.js, web/js/spinalcordtoolbox-app.js
+  - `file-io`: web/harness.html, web/js/controllers/DicomController.js, web/js/spinalcordtoolbox-app.js
   - `ui`: web/harness.html, web/js/spinalcordtoolbox-app.js
+  - `viewer`: scripts/test_viewer_controller.mjs
   - `volume`: web/js/spinalcordtoolbox-app.js
 - **calmar**
-  - `(root)`: web/index.html
-  - `file-io`: web/harness.html, web/js/controllers/DicomController.js, web/js/controllers/FileIOController.js, web/js/controllers/InferenceExecutor.js
+  - `(root)`: web/index.html, web/js/controllers/CalmarPipeline.js, web/js/lnm-app.js
+  - `file-io`: web/harness.html, web/js/controllers/DicomController.js, web/js/controllers/FileIOController.js
   - `ui`: web/harness.html, web/js/lnm-app.js
+  - `viewer`: scripts/test_viewer_controller.mjs
 - **qsmbly**
-  - `(root)`: index.html, js/controllers/DicomController.js
-  - `file-io`: js/controllers/DicomController.js
+  - `(root)`: index.html, js/controllers/DicomController.js, js/controllers/QsmEchoViewer.js
+  - `file-io`: js/controllers/DicomController.js, js/controllers/MaskController.js, js/modules/file-io/NiftiUtils.test.js, js/modules/file-io/index.js, js/qsm-app-romeo.js
   - `ui`: js/qsm-app-romeo.js
 - **seedseg**
-  - `file-io`: web/js/controllers/DicomController.js
+  - `(root)`: web/js/controllers/SeedSegPipeline.js, web/js/seedseg-app.js
+  - `file-io`: web/js/controllers/DicomController.js, web/js/seedseg-app.js
   - `ui`: web/js/seedseg-app.js
 - **dicompare**
   - `ui`: public/embed/DicompareReportRenderer.js

@@ -1,6 +1,6 @@
 import { FileIOController } from './controllers/FileIOController.js';
-import { ViewerController } from './controllers/ViewerController.js';
-import { InferenceExecutor } from './controllers/InferenceExecutor.js';
+import { ViewerController } from '@neurodesk/webapp-components';
+import { CalmarPipeline } from './controllers/CalmarPipeline.js';
 import { MaskDrawingController } from './controllers/MaskDrawingController.js';
 import { LNM_PIPELINES, getPipelineById } from './app/lnm-tasks.js';
 import {
@@ -319,7 +319,7 @@ export class LesionNetworkMappingApp {
       atlasQc: true
     };
 
-    this.executor = new InferenceExecutor({
+    this.executor = new CalmarPipeline({
       updateOutput: (msg) => this.updateOutput(msg),
       updateDebugOutput: (msg, options) => this.updateDebugOutput(msg, options),
       setProgress: (frac, label) => this.handleWorkerProgress(frac, label),

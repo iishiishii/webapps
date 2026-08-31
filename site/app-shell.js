@@ -1,3 +1,5 @@
+import { resolveShellAdapter } from './shell-adapters/index.js';
+
 (() => {
   const shellScript = document.querySelector('script[data-neurodesk-app-shell]');
   if (!shellScript) return;
@@ -11,12 +13,7 @@
     analyticsHref: shellScript.dataset.analyticsHref,
     moreAppsHref: shellScript.dataset.moreAppsHref,
     sourceHref: shellScript.dataset.sourceHref,
-  };
-
-  const utilityControls = {
-    'easy-mp2rage': { header: 'body > header', selector: '#tutorialBtn, #resetAll' },
-    dicom2vid: { header: 'body > header', selector: '#tutorialBtn, #resetAll' },
-    qsmbly: { header: 'header.app-header', selector: '#openGuide, #appLogo' },
+    shell: shellScript.dataset.appShell,
   };
 
   const analyticsUrl = new URL(metadata.analyticsHref, document.baseURI);
@@ -74,20 +71,7 @@
   }
 
   function findLegacyControl(action) {
-    const aliases = {
-      about: ['about', 'about this tool & how it works'],
-      cite: ['cite', 'citation', 'citations'],
-      privacy: ['privacy'],
-    }[action];
-    const candidates = document.querySelectorAll('button, a, summary, [role="button"]');
-    return [...candidates].find((candidate) => {
-      if (candidate.closest('.nd-app-bar, .nd-app-dialog')) return false;
-      const label = (candidate.textContent || candidate.getAttribute('aria-label') || candidate.title || '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase();
-      return aliases.some((alias) => label === alias || label.startsWith(`${alias} `));
-    });
+    return document.querySelector(`[data-neurodesk-control="${action}"]`);
   }
 
   function openFallbackDialog(kind) {
@@ -175,25 +159,12 @@
   }
 
   function installBars() {
-    document.querySelectorAll('.start-header, .app-header, nd-imaging-app-header')
-      .forEach(replaceHeader);
-
-    if (metadata.id === 'dicompare') {
-      document.querySelectorAll('#root header.bg-surface-primary.shadow-sm').forEach(replaceHeader);
-    }
-
-    const utilities = utilityControls[metadata.id];
-    if (utilities) {
-      preserveUtilityControls(document.querySelector(utilities.header), utilities.selector);
-    }
-
-    if (metadata.id === 'qsmbly') {
-      const landing = document.querySelector('#landingPage');
-      if (landing && !landing.querySelector(':scope > .nd-app-bar')) {
-        landing.dataset.neurodeskTopBarOverlay = '';
-        landing.prepend(createBar());
-      }
-    }
+    const shell = resolveShellAdapter(metadata.shell, document);
+    shell.headers.forEach(replaceHeader);
+    if (shell.utilities.length && shell.headers[0]) preserveUtilityControls(shell.headers[0], '[data-neurodesk-utility]');
+    shell.overlays.forEach((landing) => {
+      if (!landing.querySelector(':scope > .nd-app-bar')) { landing.dataset.neurodeskTopBarOverlay = ''; landing.prepend(createBar()); }
+    });
 
     if (document.querySelector('[data-neurodesk-top-bar-host] > .nd-app-bar')) {
       document.querySelectorAll('body > .nd-app-bar--standalone').forEach((bar) => bar.remove());

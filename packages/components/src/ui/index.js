@@ -9,3 +9,4 @@ export * from './CommandPreview.js';
 export * from './DicompareReportRenderer.js';
 export * from './renderSidebarSection.js';
 export * from './renderViewerToolbar.js';
+export * from './WindowControls.js';

@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MuscleMap - Whole-Body Muscle Segmentation</title>
   <link rel="icon" type="image/png" href="img/musclemap-favicon.png" sizes="64x64">
+  <link rel="stylesheet" href="vendor/webapp-components/src/styles/base.css">
   <link rel="stylesheet" href="css/styles.css">
   <!-- Resolve shared @neurodesk/webapp-components (workspace package) for the browser without a
        bundler. Files are vendored into web/vendor/ by `pnpm --filter musclemap vendor` (prebuild).
-       This keeps the classic importScripts inference worker and relative asset paths untouched. -->
+       The module worker and its shared toolkit continue to use relative asset paths. -->
   <script type="importmap">
   {
     "imports": {

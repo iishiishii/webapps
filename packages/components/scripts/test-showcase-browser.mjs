@@ -21,7 +21,7 @@ try {
   if (!result.visible) throw new Error('Showcase app shell or viewer is missing.');
   if (result.sections < 6) throw new Error(`Expected at least 6 showcase sections, found ${result.sections}.`);
   const renderedText = result.text.toLowerCase();
-  for (const phrase of ['FileIOController', 'Pipeline Outputs', 'Domain Plugins', 'QSM Pipeline', 'Validation Report']) {
+  for (const phrase of ['FileIOController', 'Pipeline Outputs', 'Worker Toolkit', 'QSM Pipeline', 'Validation Report']) {
     if (!renderedText.includes(phrase.toLowerCase())) throw new Error(`Rendered showcase text is missing "${phrase}".`);
   }
   if (result.exceptions.length) throw new Error(`Browser exceptions:\n${result.exceptions.join('\n')}`);
@@ -115,7 +115,7 @@ async function inspectShowcase(chrome, url) {
     const [text, sections, visible] = await Promise.all([
       send('Runtime.evaluate', { expression: 'document.body.innerText', returnByValue: true }),
       send('Runtime.evaluate', { expression: 'document.querySelectorAll(".nd-sidebar-section").length', returnByValue: true }),
-      send('Runtime.evaluate', { expression: 'Boolean(document.querySelector(".nd-app-container") && document.querySelector(".showcase-viewer"))', returnByValue: true })
+      send('Runtime.evaluate', { expression: 'Boolean(document.querySelector(".nd-imaging-workspace") && document.querySelector(".showcase-viewer"))', returnByValue: true })
     ]);
     socket.close();
     return {

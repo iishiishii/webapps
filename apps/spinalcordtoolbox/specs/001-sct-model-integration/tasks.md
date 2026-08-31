@@ -37,7 +37,7 @@
 - [X] T011 Update `web/js/app/labels.js` to expose task-specific SCT label definitions instead of a single global segmentation label set
 - [X] T012 Update model cache naming and invalidation to use SCT task/model asset keys in `web/js/app/config.js`
 - [X] T013 Update worker inference parameter contract to accept `taskId`, `modelAssetId`, labels, and manifest provenance in `web/js/inference-worker.js`
-- [X] T014 Update `web/js/controllers/InferenceExecutor.js` to pass selected SCT task metadata to the worker
+- [X] T014 Update the inference adapter (now `web/js/controllers/SctPipeline.js`, backed by the shared `PipelineExecutor`) to pass selected SCT task metadata to the worker
 - [X] T015 Confirm no patient-derived data is written to model manifest, cache keys, logs, or telemetry fields in `web/js/app/sct-tasks.js` and `web/js/inference-worker.js`
 - [X] T016 Validate foundational JavaScript syntax with `npm run lint` using `package.json` and `scripts/check-syntax.mjs`
 - [X] T017 Validate model manifest schema failure and success cases with `python scripts/validate_sct_models.py --manifest web/models/manifest.json`

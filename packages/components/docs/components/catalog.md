@@ -2,13 +2,11 @@
 
 ## Core
 
-### `createNeuroWebapp(config)`
+### `mountImagingWorkspace(config)`
 
-Builds the shared app shell: header, sidebar, viewer area, status/progress footer, console, footer, and modal root.
-
-Key options: `root`, `title`, `subtitle`, `version`, `logo`, `headerActions`, `sidebarSections`, `modals`, `plugins`.
-
-Returns references, a `ConsoleOutput`, a `ProgressManager`, and helpers: `addSidebarSection`, `addModal`, `registerPlugin`, `setStatus`, `setProgress`, `destroy`.
+Moves existing controls, viewer, and status regions into the shared imaging
+workspace without cloning app-owned nodes or listeners. The hosted-site shell
+uses the same `data-neurodesk-control` contract for About, Cite, and Privacy.
 
 ## UI
 
@@ -38,7 +36,7 @@ Render label swatches, label volumes, detected label counts, voxel counts, and s
 
 ### `CommandPreview`
 
-Connects a command generator to a modal or text element. Used by the QSM plugin for `qsmxt` command previews.
+Connects a command generator to a modal or text element. QSMbly uses it for `qsmxt` command previews.
 
 ### `DicompareReportRenderer`
 
@@ -92,23 +90,11 @@ Declarative stages with `id`, `label`, `requiredInputs`, `settingsSchema`, `work
 
 ### `PipelineRegistry`
 
-Registers pipelines directly or from plugins.
+Registers pipeline definitions by id.
 
 ## Volume And Mask
 
 Pure utilities include orientation, inverse orientation, resampling, nearest-neighbor label resampling, crop/uncrop, connected components, largest component filtering, per-label largest component, label counting, z-score and P99 normalization, Otsu thresholding, 2D/3D sliding windows, Gaussian weights, erosion, dilation, hole filling, and robust mask operations.
 
-`MaskState` wraps threshold, robust, fill, erode, dilate, and reset behavior for app-level mask workflows.
-
-## Plugins
-
-Plugins describe domain-specific tasks, labels, colormaps, pipelines, worker steps, panels, and validation hooks.
-
-Included plugins:
-
-- `synthstrip`
-- `sct`
-- `vesselboost`
-- `musclemap`
-- `lesion-network-mapping`
-- `qsm`
+Stateful mask workflows remain app-owned; the package exports the pure mask and
+volume operations they compose.

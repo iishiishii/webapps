@@ -1,15 +1,6 @@
-import { createNeuroWebapp } from '../../src/core/index.js';
-import { PipelineRegistry } from '../../src/pipeline/index.js';
-import { lesionNetworkMappingPlugin } from '../../src/plugins/lesion-network-mapping/index.js';
+import { mountImagingWorkspace } from '../../src/core/index.js';
+import { PipelineExecutor } from '../../src/inference/index.js';
 
-const registry = new PipelineRegistry();
-registry.registerPlugin(lesionNetworkMappingPlugin);
-
-const app = createNeuroWebapp({
-  title: 'Atlas Overlap',
-  subtitle: 'Template',
-  plugins: [lesionNetworkMappingPlugin],
-  sidebarSections: [{ id: 'overlap', title: 'Overlap', content: 'Upload lesion mask and run atlas overlap.' }]
-});
-
-globalThis.templateApp = { app, registry };
+const workspace = mountImagingWorkspace({ controls: '#controls', viewer: '#viewer', status: '#status', title: 'Atlas Overlap' });
+const executor = new PipelineExecutor({ workerUrl: './worker.js', steps: ['load', 'overlap'] });
+globalThis.templateApp = { workspace, executor };

@@ -24,7 +24,7 @@ import { parse } from 'acorn';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WORKER_PATH = path.join(ROOT, 'web/js/inference-worker.js');
 const PIPELINE_PATH = path.join(ROOT, 'web/js/inference-pipeline.js');
-const EXECUTOR_PATH = path.join(ROOT, 'web/js/controllers/InferenceExecutor.js');
+const EXECUTOR_PATH = path.join(ROOT, 'web/js/controllers/CalmarPipeline.js');
 
 for (const p of [WORKER_PATH, PIPELINE_PATH, EXECUTOR_PATH]) {
   assert.ok(fs.existsSync(p), `${path.relative(ROOT, p)} must exist`);
@@ -168,11 +168,11 @@ assert.doesNotMatch(
   'no UMD IIFE wrapper (use ESM)'
 );
 
-// ---- (6) InferenceExecutor spawns module worker ----
+// ---- (6) CalmarPipeline configures a module worker ----
 assert.match(
   executor,
-  /new\s+Worker\s*\([^)]*type:\s*['"]module['"]/,
-  "InferenceExecutor must spawn the worker with { type: 'module' }"
+  /workerType:\s*['"]module['"]/,
+  "CalmarPipeline must configure the shared executor as a module worker"
 );
 
 // Phase 2a.1.4b: InferenceExecutor must expose runSynthStrip() that posts

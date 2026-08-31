@@ -1,13 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  cOrderToNifti,
   connectedComponents3D,
   computeOtsuThreshold,
   computeTilePositions2D,
+  cropCenteredVolume,
   cropVolume,
   dilateMask3D,
   fillHoles3D,
+  flipVolumeAxes,
+  keepLargestComponentAndFill,
+  niftiToCOrder,
+  padVolumeCentered,
+  removeSmallComponents,
   resampleLabelsNearest,
+  transposeXYZToZYX,
+  transposeZYXToXYZ,
   uncropVolume
 } from '../src/volume/index.js';
 
@@ -51,4 +60,32 @@ test('threshold and tile helpers return useful values', () => {
   assert.ok(threshold.thresholdValue >= 0);
   const tiles = computeTilePositions2D(10, 10, 4, 4, 0.5);
   assert.ok(tiles.length > 1);
+});
+
+test('centered padding and cropping round-trip a volume', () => {
+  const source = new Float32Array([1, 2, 3, 4]);
+  const padded = padVolumeCentered(source, [2, 2, 1], [4, 4, 1]);
+  assert.deepEqual(Array.from(cropCenteredVolume(padded, [4, 4, 1], [2, 2, 1])), Array.from(source));
+});
+
+test('NIfTI and C axis layouts round-trip without changing voxels', () => {
+  const source = new Float32Array([0, 1, 2, 3, 4, 5, 6, 7]);
+  const cOrder = niftiToCOrder(source, [2, 2, 2]);
+  assert.deepEqual(Array.from(cOrderToNifti(cOrder, [2, 2, 2])), Array.from(source));
+});
+
+test('axis transposition round-trips voxel placement', () => {
+  const source = new Float32Array([0, 1, 2, 3, 4, 5, 6, 7]);
+  const transposed = transposeXYZToZYX(source, [2, 2, 2]);
+  assert.deepEqual(Array.from(transposeZYXToXYZ(transposed.data, transposed.dims).data), Array.from(source));
+  assert.deepEqual(Array.from(flipVolumeAxes(new Uint8Array([1, 2]), [2, 1, 1], [0]).data), [2, 1]);
+});
+
+test('shared connected-component cleanup applies app policies', () => {
+  const mask = new Uint8Array(27);
+  mask[0] = 1;
+  mask[1] = 1;
+  mask[26] = 1;
+  assert.deepEqual(Array.from(removeSmallComponents(mask, [3, 3, 3], 2)), [1, 1, ...new Array(25).fill(0)]);
+  assert.deepEqual(Array.from(keepLargestComponentAndFill(mask, [3, 3, 3])), [1, 1, ...new Array(25).fill(0)]);
 });

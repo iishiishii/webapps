@@ -33,11 +33,11 @@ test('SeedSeg pins the current ONNX Runtime Web loader contract', async () => {
 
   const requested = requestedRuntimeFiles();
   const ortFiles = requested.filter((file) => file.group === 'ort-web').map((file) => file.name).sort();
-  assert.deepEqual(ortFiles, ['ort-wasm-simd-threaded.mjs', 'ort-wasm-simd-threaded.wasm', 'ort.min.js']);
+  assert.deepEqual(ortFiles, ['ort-wasm-simd-threaded.mjs', 'ort-wasm-simd-threaded.wasm', 'ort.webgpu.bundle.min.mjs']);
 
   const worker = await readFile(join(appRoot, 'web', 'js', 'inference-worker.js'), 'utf8');
-  assert.match(worker, /importScripts\('\.\.\/wasm\/ort\.min\.js'\)/,
-    'the inference worker must load the WASM-only ort.min.js loader the prebuild fetches');
+  assert.match(worker, /import\s+\*\s+as\s+ort\s+from\s+['"]\.\.\/wasm\/ort\.webgpu\.bundle\.min\.mjs['"]/,
+    'the module worker must load the ESM ONNX Runtime bundle the prebuild fetches');
 });
 
 test('SeedSeg requests the QSM WASM helpers alongside ONNX Runtime', () => {

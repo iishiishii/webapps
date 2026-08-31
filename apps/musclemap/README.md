@@ -105,7 +105,8 @@ The generator validates architecture, class counts, label uniqueness, config dig
 
 - `web/js/app/model-catalog.generated.js` for the browser
 - `/models/musclemap.manifest.json` for hosted assets
-- `/packages/components/src/plugins/musclemap/index.js` for the shared plugin registry
+
+The app owns its generated scientific model contract; shared UI and runtime code do not duplicate these defaults.
 
 ## Inference contract
 

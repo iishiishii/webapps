@@ -10,7 +10,7 @@ import {
   createMaskNifti,
   createNiftiHeaderFromVolume,
   createFloat64Nifti
-} from './NiftiUtils.js';
+} from '@neurodesk/webapp-components/file-io';
 
 describe('NiftiUtils', () => {
   // Create a minimal valid NIfTI-1 header buffer for testing
@@ -141,13 +141,13 @@ describe('NiftiUtils', () => {
       const result = createMaskNifti(maskData, sourceHeader);
 
       expect(result).toBeInstanceOf(ArrayBuffer);
-      // Header (352) + data (64 * 4 = 256)
-      expect(result.byteLength).toBe(352 + 256);
+      // Binary masks remain compact rather than being widened to float32.
+      expect(result.byteLength).toBe(352 + 64);
 
-      // Check datatype was set to FLOAT32
+      // Check datatype was set to UINT8.
       const view = new DataView(result);
-      expect(view.getInt16(70, true)).toBe(16);
-      expect(view.getInt16(72, true)).toBe(32);
+      expect(view.getInt16(70, true)).toBe(2);
+      expect(view.getInt16(72, true)).toBe(8);
     });
 
     it('should preserve mask values', () => {
@@ -155,7 +155,7 @@ describe('NiftiUtils', () => {
       const maskData = new Float32Array([0, 1, 1, 0, 0, 1, 0, 1]);
 
       const result = createMaskNifti(maskData, sourceHeader);
-      const dataView = new Float32Array(result, 352);
+      const dataView = new Uint8Array(result, 352);
 
       expect(dataView[0]).toBe(0);
       expect(dataView[1]).toBe(1);

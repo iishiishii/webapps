@@ -8,7 +8,8 @@ import {
   createMaskNifti,
   createNiftiHeaderFromVolume,
   createFloat64Nifti
-} from './modules/file-io/NiftiUtils.js';
+  , createNiftiFromVolume
+} from '@neurodesk/webapp-components/file-io';
 import { ModalManager } from '@neurodesk/webapp-components/ui';
 import { LandingPage } from './modules/ui/LandingPage.js';
 import { Tutorial, WelcomePrompt } from './modules/ui/Tutorial.js';
@@ -2923,7 +2924,7 @@ class QSMApp {
     const baseName = name.replace(/\.(nii|nii\.gz)$/i, '');
 
     // Create NIfTI from volume data
-    const niftiBuffer = this.createNiftiFromVolume(vol);
+    const niftiBuffer = createNiftiFromVolume(vol);
 
     // Download
     const blob = new Blob([niftiBuffer], { type: 'application/octet-stream' });
@@ -2964,89 +2965,6 @@ class QSMApp {
   /**
    * Create a NIfTI buffer from a NiiVue volume
    */
-  createNiftiFromVolume(vol) {
-    const hdr = vol.hdr;
-    const img = vol.img;
-
-    // Determine data type and bytes per voxel
-    let datatype = 16;  // FLOAT32 by default
-    let bitpix = 32;
-    let bytesPerVoxel = 4;
-
-    if (img instanceof Float64Array) {
-      datatype = 64;  // FLOAT64
-      bitpix = 64;
-      bytesPerVoxel = 8;
-    } else if (img instanceof Int16Array) {
-      datatype = 4;   // INT16
-      bitpix = 16;
-      bytesPerVoxel = 2;
-    } else if (img instanceof Uint8Array) {
-      datatype = 2;   // UINT8
-      bitpix = 8;
-      bytesPerVoxel = 1;
-    }
-
-    const headerSize = 352;
-    const dataSize = img.length * bytesPerVoxel;
-    const buffer = new ArrayBuffer(headerSize + dataSize);
-    const view = new DataView(buffer);
-
-    // sizeof_hdr
-    view.setInt32(0, 348, true);
-
-    // dim array
-    const dims = hdr.dims || [3, vol.dims[1], vol.dims[2], vol.dims[3], 1, 1, 1, 1];
-    for (let i = 0; i < 8; i++) {
-      view.setInt16(40 + i * 2, dims[i] || 0, true);
-    }
-
-    // datatype and bitpix
-    view.setInt16(70, datatype, true);
-    view.setInt16(72, bitpix, true);
-
-    // pixdim
-    const pixdim = hdr.pixDims || [1, 1, 1, 1, 1, 1, 1, 1];
-    for (let i = 0; i < 8; i++) {
-      view.setFloat32(76 + i * 4, pixdim[i] || 1, true);
-    }
-
-    // vox_offset
-    view.setFloat32(108, headerSize, true);
-
-    // scl_slope and scl_inter
-    view.setFloat32(112, hdr.scl_slope || 1, true);
-    view.setFloat32(116, hdr.scl_inter || 0, true);
-
-    // xyzt_units
-    view.setUint8(123, 10);  // mm + sec
-
-    // qform_code and sform_code
-    view.setInt16(252, hdr.qform_code || 1, true);
-    view.setInt16(254, hdr.sform_code || 1, true);
-
-    // Affine matrix
-    if (hdr.affine) {
-      for (let i = 0; i < 4; i++) {
-        view.setFloat32(280 + i * 4, hdr.affine[0][i] || 0, true);
-        view.setFloat32(296 + i * 4, hdr.affine[1][i] || 0, true);
-        view.setFloat32(312 + i * 4, hdr.affine[2][i] || 0, true);
-      }
-    }
-
-    // magic
-    view.setUint8(344, 0x6E);  // 'n'
-    view.setUint8(345, 0x2B);  // '+'
-    view.setUint8(346, 0x31);  // '1'
-    view.setUint8(347, 0x00);
-
-    // Copy image data
-    const dataView = new Uint8Array(buffer, headerSize);
-    const imgBytes = new Uint8Array(img.buffer, img.byteOffset, img.byteLength);
-    dataView.set(imgBytes);
-
-    return buffer;
-  }
 
   updateOutput(message) {
     const consoleOutput = document.getElementById('consoleOutput');

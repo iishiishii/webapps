@@ -12,15 +12,15 @@ const stylesCss = fs.readFileSync(path.join(ROOT, 'web/css/styles.css'), 'utf8')
 const appJs = fs.readFileSync(path.join(ROOT, 'web/js/spinalcordtoolbox-app.js'), 'utf8');
 const controllerSources = [
   'web/js/controllers/FileIOController.js',
-  'web/js/controllers/InferenceExecutor.js',
-  'web/js/controllers/ViewerController.js',
+  'web/js/controllers/SctPipeline.js',
   'web/js/controllers/DicomController.js',
   'web/js/modules/fallback-nifti-preview.js'
 ].map(file => fs.readFileSync(path.join(ROOT, file), 'utf8')).join('\n');
 const sharedUiSources = [
   'ConsoleOutput.js',
   'ModalManager.js',
-  'ProgressManager.js'
+  'ProgressManager.js',
+  'WindowControls.js'
 ].map(file => fs.readFileSync(path.join(SHARED_UI, file), 'utf8')).join('\n');
 const viewerTest = fs.readFileSync(path.join(ROOT, 'scripts/test_viewer_controller.mjs'), 'utf8');
 const processingTest = fs.readFileSync(path.join(ROOT, 'scripts/test_sct_processing.cjs'), 'utf8');

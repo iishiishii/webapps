@@ -25,6 +25,7 @@ export function mountImagingWorkspace(config = {}) {
   });
   const appHeader = createElement('nd-imaging-app-header', {
     className: 'nd-imaging-app-header',
+    'data-neurodesk-top-bar-host': '',
     ownerDocument: doc,
   });
   const brand = createElement('nd-imaging-brand', {
@@ -57,6 +58,11 @@ export function mountImagingWorkspace(config = {}) {
       ownerDocument: doc,
     }),
   ]);
+
+  for (const [action, target] of Object.entries(config.controlsContract || {})) {
+    const element = resolveElement(target, doc);
+    if (element) element.dataset.neurodeskControl = action;
+  }
 
   appHeader.append(brand, navigation);
   controls.classList.add('nd-imaging-controls');

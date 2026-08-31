@@ -91,6 +91,52 @@ export function keepLargestComponent(binaryMask, dims, OutputCtor = Uint8Array) 
   return result;
 }
 
+export function removeSmallComponents(binaryMask, dims, minSize, OutputCtor = Uint8Array) {
+  const { labels, numComponents } = connectedComponents3D(binaryMask, dims);
+  if (!numComponents) return binaryMask;
+  const sizes = new Int32Array(numComponents + 1);
+  for (const label of labels) if (label > 0) sizes[label] += 1;
+  const result = new OutputCtor(labels.length);
+  for (let i = 0; i < labels.length; i++) {
+    if (labels[i] > 0 && sizes[labels[i]] >= minSize) result[i] = 1;
+  }
+  return result;
+}
+
+export function keepLargestComponentAndFill(binaryMask, dims, OutputCtor = Uint8Array) {
+  const { labels, numComponents } = connectedComponents3D(binaryMask, dims);
+  if (numComponents <= 1) return binaryMask;
+
+  const sizes = new Int32Array(numComponents + 1);
+  for (const label of labels) if (label > 0) sizes[label] += 1;
+  let largest = 1;
+  for (let label = 2; label <= numComponents; label++) {
+    if (sizes[label] > sizes[largest]) largest = label;
+  }
+
+  const result = new OutputCtor(labels.length);
+  for (let i = 0; i < labels.length; i++) if (labels[i] === largest) result[i] = 1;
+
+  const inverted = new Uint8Array(result.length);
+  for (let i = 0; i < result.length; i++) inverted[i] = result[i] ? 0 : 1;
+  const background = connectedComponents3D(inverted, dims);
+  const borderLabels = new Set();
+  const [nx, ny, nz] = dims;
+  for (let z = 0; z < nz; z++) {
+    for (let y = 0; y < ny; y++) {
+      for (let x = 0; x < nx; x++) {
+        if (x !== 0 && x !== nx - 1 && y !== 0 && y !== ny - 1 && z !== 0 && z !== nz - 1) continue;
+        const label = background.labels[x + y * nx + z * nx * ny];
+        if (label > 0) borderLabels.add(label);
+      }
+    }
+  }
+  for (let i = 0; i < result.length; i++) {
+    if (background.labels[i] > 0 && !borderLabels.has(background.labels[i])) result[i] = 1;
+  }
+  return result;
+}
+
 export function perLabelLargestComponent(labelVolume, dims, maxLabel, OutputCtor = Uint8Array) {
   const result = new OutputCtor(labelVolume.length);
   for (let label = 1; label <= maxLabel; label++) {

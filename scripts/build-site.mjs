@@ -23,6 +23,7 @@ for (const app of registry.apps) {
   const appPackage = JSON.parse(await readFile(join(repoRoot, 'apps', app.id, 'package.json'), 'utf8'));
   await writeFile(indexPath, injectCompositeTheme(indexHtml, {
     appId: app.id,
+    shell: app.shell,
     title: app.title,
     description: app.description,
     version: appPackage.version,
@@ -40,6 +41,7 @@ await cp(join(repoRoot, 'site', 'theme.js'), join(siteDist, 'theme.js'));
 await cp(join(repoRoot, 'site', 'neurodesk-logo.svg'), join(siteDist, 'neurodesk-logo.svg'));
 await cp(join(repoRoot, 'site', 'app-theme.css'), join(siteDist, 'app-theme.css'));
 await cp(join(repoRoot, 'site', 'app-shell.js'), join(siteDist, 'app-shell.js'));
+await cp(join(repoRoot, 'site', 'shell-adapters'), join(siteDist, 'shell-adapters'), { recursive: true });
 await cp(join(repoRoot, 'packages', 'analytics', 'src', 'index.js'), join(siteDist, 'analytics.js'));
 await cp(join(repoRoot, 'site', 'analytics.json'), join(siteDist, 'analytics.json'));
 await writeFile(join(siteDist, '.nojekyll'), '');

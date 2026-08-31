@@ -8,9 +8,10 @@ import { FileIOController } from './controllers/FileIOController.js';
 import { DicomController } from './controllers/DicomController.js';
 import { DicompareController } from 'https://dicompare.neurodesk.org/embed/DicompareController.js';
 import { DicompareReportRenderer } from '@neurodesk/webapp-components/ui';
-import { ViewerController } from './controllers/ViewerController.js';
-import { InferenceExecutor } from './controllers/InferenceExecutor.js';
-import { ConsoleOutput, ProgressManager, ModalManager } from '@neurodesk/webapp-components/ui';
+import { ViewerController } from '@neurodesk/webapp-components';
+import { SeedSegPipeline } from './controllers/SeedSegPipeline.js';
+import { ConsoleOutput, ProgressManager, ModalManager, bindWindowControls } from '@neurodesk/webapp-components/ui';
+import { createNiftiFromVolume } from '@neurodesk/webapp-components/file-io';
 import * as Config from './app/config.js';
 
 class SeedSegApp {
@@ -80,7 +81,7 @@ class SeedSegApp {
       updateOutput: (msg) => this.updateOutput(msg)
     });
 
-    this.inferenceExecutor = new InferenceExecutor({
+    this.inferenceExecutor = new SeedSegPipeline({
       updateOutput: (msg) => this.updateOutput(msg),
       setProgress: (val, text) => this.setProgress(val, text),
       onStageData: (data) => this.handleStageData(data),
@@ -561,112 +562,25 @@ class SeedSegApp {
   // ==================== Viewer Controls ====================
 
   setupWindowControls() {
-    const rangeMin = document.getElementById('rangeMin');
-    const rangeMax = document.getElementById('rangeMax');
-    const windowMin = document.getElementById('windowMin');
-    const windowMax = document.getElementById('windowMax');
-    const resetBtn = document.getElementById('resetWindow');
-    if (!rangeMin || !rangeMax || !windowMin || !windowMax) return;
-
-    const updateSelected = () => {
-      const selected = document.getElementById('rangeSelected');
-      if (!selected) return;
-      const min = parseFloat(rangeMin.value);
-      const max = parseFloat(rangeMax.value);
-      selected.style.left = `${min}%`;
-      selected.style.width = `${max - min}%`;
-    };
-
-    const applyFromSliders = () => {
-      if (!this.nv.volumes.length) return;
-      const vol = this.nv.volumes[0];
-      const dataMin = vol.global_min ?? 0;
-      const dataMax = vol.global_max ?? 1;
-      const range = dataMax - dataMin || 1;
-      const newMin = dataMin + (parseFloat(rangeMin.value) / 100) * range;
-      const newMax = dataMin + (parseFloat(rangeMax.value) / 100) * range;
-      windowMin.value = newMin.toPrecision(4);
-      windowMax.value = newMax.toPrecision(4);
-      vol.cal_min = newMin;
-      vol.cal_max = newMax;
-      this.nv.updateGLVolume();
-      updateSelected();
-    };
-
-    const applyFromInputs = () => {
-      if (!this.nv.volumes.length) return;
-      const vol = this.nv.volumes[0];
-      const newMin = parseFloat(windowMin.value);
-      const newMax = parseFloat(windowMax.value);
-      if (isNaN(newMin) || isNaN(newMax)) return;
-      vol.cal_min = newMin;
-      vol.cal_max = newMax;
-      this.nv.updateGLVolume();
-      this.syncSlidersToVolume();
-    };
-
-    rangeMin.addEventListener('input', () => {
-      if (parseFloat(rangeMin.value) > parseFloat(rangeMax.value) - 1) {
-        rangeMin.value = parseFloat(rangeMax.value) - 1;
+    this.windowControls = bindWindowControls({
+      getVolume: () => this.nv?.volumes?.[0] || null,
+      updateVolume: () => this.nv?.updateGLVolume?.(),
+      onReset: volume => {
+        if (typeof this.applyAutoContrast === 'function') return this.applyAutoContrast();
+        volume.cal_min = volume.global_min ?? 0;
+        volume.cal_max = volume.global_max ?? 1;
+        this.nv?.updateGLVolume?.();
+        this.windowControls.sync();
       }
-      applyFromSliders();
     });
-
-    rangeMax.addEventListener('input', () => {
-      if (parseFloat(rangeMax.value) < parseFloat(rangeMin.value) + 1) {
-        rangeMax.value = parseFloat(rangeMin.value) + 1;
-      }
-      applyFromSliders();
-    });
-
-    windowMin.addEventListener('change', applyFromInputs);
-    windowMax.addEventListener('change', applyFromInputs);
-
-    if (resetBtn) {
-      resetBtn.addEventListener('click', () => {
-        if (!this.nv.volumes.length) return;
-        const vol = this.nv.volumes[0];
-        vol.cal_min = vol.global_min ?? 0;
-        vol.cal_max = vol.global_max ?? 1;
-        this.nv.updateGLVolume();
-        this.syncWindowControls();
-      });
-    }
   }
 
   syncWindowControls() {
-    if (!this.nv.volumes.length) return;
-    const vol = this.nv.volumes[0];
-    const windowMin = document.getElementById('windowMin');
-    const windowMax = document.getElementById('windowMax');
-    if (windowMin) windowMin.value = (vol.cal_min ?? 0).toPrecision(4);
-    if (windowMax) windowMax.value = (vol.cal_max ?? 1).toPrecision(4);
-    this.syncSlidersToVolume();
-
-    // Enable download button
-    const dlBtn = document.getElementById('downloadCurrentVolume');
-    if (dlBtn) dlBtn.disabled = false;
+    this.windowControls?.sync();
   }
 
   syncSlidersToVolume() {
-    if (!this.nv.volumes.length) return;
-    const vol = this.nv.volumes[0];
-    const dataMin = vol.global_min ?? 0;
-    const dataMax = vol.global_max ?? 1;
-    const range = dataMax - dataMin || 1;
-    const rangeMin = document.getElementById('rangeMin');
-    const rangeMax = document.getElementById('rangeMax');
-    const selected = document.getElementById('rangeSelected');
-    if (!rangeMin || !rangeMax) return;
-
-    const pctMin = Math.max(0, Math.min(100, ((vol.cal_min - dataMin) / range) * 100));
-    const pctMax = Math.max(0, Math.min(100, ((vol.cal_max - dataMin) / range) * 100));
-    rangeMin.value = pctMin;
-    rangeMax.value = pctMax;
-    if (selected) {
-      selected.style.left = `${pctMin}%`;
-      selected.style.width = `${pctMax - pctMin}%`;
-    }
+    this.windowControls?.syncSliders();
   }
 
   downloadCurrentVolume() {
@@ -676,7 +590,7 @@ class SeedSegApp {
     }
     const vol = this.nv.volumes[0];
     const name = (vol.name || 'volume').replace(/\.(nii|nii\.gz)$/i, '');
-    const niftiBuffer = this.createNiftiFromVolume(vol);
+    const niftiBuffer = createNiftiFromVolume(vol);
     const blob = new Blob([niftiBuffer], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -689,44 +603,6 @@ class SeedSegApp {
     this.updateOutput(`Downloaded: ${name}.nii`);
   }
 
-  createNiftiFromVolume(vol) {
-    const hdr = vol.hdr;
-    const img = vol.img;
-    let datatype = 16, bitpix = 32, bytesPerVoxel = 4;
-    if (img instanceof Float64Array) { datatype = 64; bitpix = 64; bytesPerVoxel = 8; }
-    else if (img instanceof Int16Array) { datatype = 4; bitpix = 16; bytesPerVoxel = 2; }
-    else if (img instanceof Uint8Array) { datatype = 2; bitpix = 8; bytesPerVoxel = 1; }
-
-    const headerSize = 352;
-    const buffer = new ArrayBuffer(headerSize + img.length * bytesPerVoxel);
-    const view = new DataView(buffer);
-
-    view.setInt32(0, 348, true);
-    const dims = hdr.dims || [3, vol.dims[1], vol.dims[2], vol.dims[3], 1, 1, 1, 1];
-    for (let i = 0; i < 8; i++) view.setInt16(40 + i * 2, dims[i] || 0, true);
-    view.setInt16(70, datatype, true);
-    view.setInt16(72, bitpix, true);
-    const pixdim = hdr.pixDims || [1, 1, 1, 1, 1, 1, 1, 1];
-    for (let i = 0; i < 8; i++) view.setFloat32(76 + i * 4, pixdim[i] || 1, true);
-    view.setFloat32(108, headerSize, true);
-    view.setFloat32(112, hdr.scl_slope || 1, true);
-    view.setFloat32(116, hdr.scl_inter || 0, true);
-    view.setUint8(123, 10);
-    view.setInt16(252, hdr.qform_code || 1, true);
-    view.setInt16(254, hdr.sform_code || 1, true);
-    if (hdr.affine) {
-      for (let i = 0; i < 4; i++) {
-        view.setFloat32(280 + i * 4, hdr.affine[0][i] || 0, true);
-        view.setFloat32(296 + i * 4, hdr.affine[1][i] || 0, true);
-        view.setFloat32(312 + i * 4, hdr.affine[2][i] || 0, true);
-      }
-    }
-    view.setUint8(344, 0x6E); view.setUint8(345, 0x2B);
-    view.setUint8(346, 0x31); view.setUint8(347, 0x00);
-
-    new Uint8Array(buffer, headerSize).set(new Uint8Array(img.buffer, img.byteOffset, img.byteLength));
-    return buffer;
-  }
 
   saveScreenshot() {
     let filename = 'seedseg_screenshot.png';

@@ -24,34 +24,25 @@ See [docs/architecture/overview.md](docs/architecture/overview.md) and [docs/com
 ## Quick Start
 
 ```js
-import { createNeuroWebapp } from '@neurodesk/webapp-components';
-import { ConsoleOutput, ProgressManager } from '@neurodesk/webapp-components/ui';
-import { FileIOController } from '@neurodesk/webapp-components/file-io';
+import { mountImagingWorkspace } from '@neurodesk/webapp-components/core';
+import { PipelineExecutor } from '@neurodesk/webapp-components/inference';
+import { ViewerController } from '@neurodesk/webapp-components/viewer';
 
-const app = createNeuroWebapp({
+mountImagingWorkspace({
   root: document.body,
-  title: 'My Neurodesk App',
-  subtitle: 'Browser inference',
-  version: '0.1.0'
+  controls: '#controls',
+  viewer: '#viewer',
+  status: '#status',
+  title: 'My Neurodesk App'
 });
 
-const consoleOutput = new ConsoleOutput({ element: app.refs.consoleOutput });
-const progress = new ProgressManager({
-  barElement: app.refs.progressBar,
-  textElement: app.refs.statusText
-});
-
-const files = new FileIOController({
-  mode: 'simple',
-  updateOutput: message => consoleOutput.log(message)
-});
-
+const viewer = new ViewerController({ nv });
+const pipeline = new PipelineExecutor({ workerUrl: './inference-worker.js' });
 ```
 
-The `inference`, `pipeline`, `mask`, and `plugins` subpaths are experimental. They
-are kept outside the stable app-shell, file-ingestion, viewer, volume, and UI seams
-until multiple production apps consume the same contract. Scientific worker
-protocols and scientific defaults remain app-owned.
+The package provides the shared workspace, worker protocol, executor, viewer,
+volume operations, NIfTI I/O, and UI bindings. Scientific task definitions and
+model defaults remain app-owned.
 
 ## Development
 
@@ -63,7 +54,7 @@ pnpm --filter @neurodesk/webapp-components build:showcase
 pnpm --filter @neurodesk/webapp-components serve
 ```
 
-The showcase app runs at `http://127.0.0.1:8080/` by default and demonstrates the app shell, sidebar sections, file triage, viewer controls, stage results, plugin catalog, QSM command preview, echo navigation, and validation report rendering.
+The showcase app runs at `http://127.0.0.1:8080/` by default and demonstrates the workspace, file triage, viewer controls, stage results, QSM command preview, echo navigation, and validation report rendering.
 
 ## Release And Staging
 

@@ -27,13 +27,18 @@ async function walk(directory, files = []) {
   return files;
 }
 
-async function copyVerifiedFamily({ family, siteDist, registry }) {
+async function copyVerifiedFamily({ family, repoRoot, siteDist, registry }) {
   const targetDir = join(siteDist, '_runtime', family.target);
   await mkdir(targetDir, { recursive: true });
   for (const file of family.files) {
-    const app = registry.apps.find((candidate) => candidate.id === file.source_app);
-    if (!app) throw new Error(`Runtime asset ${family.id}/${file.name} has unknown source app ${file.source_app}`);
-    const source = join(siteDist, app.path, file.source);
+    let source;
+    if (file.source_package === 'runtime-support') {
+      source = join(repoRoot, 'packages', 'runtime-support', file.source);
+    } else {
+      const app = registry.apps.find((candidate) => candidate.id === file.source_app);
+      if (!app) throw new Error(`Runtime asset ${family.id}/${file.name} has unknown source app ${file.source_app}`);
+      source = join(siteDist, app.path, file.source);
+    }
     const actual = await sha256(source);
     if (actual !== file.sha256) {
       throw new Error(`Runtime asset checksum mismatch for ${source}: expected ${file.sha256}, got ${actual}`);
@@ -80,7 +85,10 @@ async function rewriteFile(file, runtimeRoot, app, relativePath) {
     `${quote}${moduleReference(file, dcm2niix)}${quote}`);
   source = source.replace(/(['"])(?:\.\.?\/)*nifti-js\/index\.js\1/g, (_match, quote) =>
     `${quote}${moduleReference(file, niftiReader)}${quote}`);
-  source = source.replaceAll('./vendor/webapp-components/src', moduleReference(file, sharedSource));
+  source = source.replace(
+    /(?<=['"])(?:\.\.\/|\.\/)*vendor\/webapp-components\/src(?=\/|['"])/g,
+    moduleReference(file, sharedSource),
+  );
 
   if (source !== original) await writeFile(file, source);
 }
@@ -110,7 +118,7 @@ export async function assembleRuntimeAssetStore({ repoRoot, siteDist, registry }
   await rm(runtimeRoot, { recursive: true, force: true });
 
   for (const family of manifest.families) {
-    await copyVerifiedFamily({ family, siteDist, registry });
+    await copyVerifiedFamily({ family, repoRoot, siteDist, registry });
   }
 
   await cp(

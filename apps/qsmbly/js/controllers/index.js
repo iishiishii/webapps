@@ -8,4 +8,4 @@ export * from './FileIOController.js';
 export * from './PipelineExecutor.js';
 export * from './PipelineSettingsController.js';
 export * from './MaskController.js';
-export * from './ViewerController.js';
+export * from './QsmEchoViewer.js';

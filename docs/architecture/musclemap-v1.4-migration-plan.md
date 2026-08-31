@@ -331,10 +331,10 @@ Expected modifications:
 - `models/musclemap.manifest.json`.
 - `apps/musclemap/web/js/app/config.js`, `labels.js`, `inference-worker.js`, `musclemap-app.js`, file I/O, viewer, and metrics/consolidation paths.
 - `apps/musclemap/web/index.html`, README, changelog, license, package version, and release documentation.
-- `packages/components/src/plugins/musclemap/index.js`.
+- `apps/musclemap/web/js/controllers/MuscleMapPipeline.js` and the shared pipeline interfaces it consumes.
 - Focused Node, Python, and Playwright tests plus approved validation-fixture metadata.
 
-Avoid a broad rewrite of the 2,049-line worker or migration to the currently unused `web/js/modules/inference` copies in this release. Extract a tested scientific core only where required to make the v1.4 boundary verifiable. Treat a larger worker modularization as a separate change after parity.
+Keep model-specific inference policy in the app worker. Put message transport, model fetching, NIfTI I/O, and generic volume operations in `@neurodesk/webapp-components` so the app does not fork infrastructure code.
 
 Expected size is 15 to 20 modified files, 4 to 8 new scripts, descriptors, fixtures, or tests, and 6 to 8 independently verifiable commits. A reasonable implementation estimate is 4 to 7 engineering days once approved MR and CT fixtures are available. Conversion benchmarks and WebGPU availability can extend elapsed time.
 

@@ -41,7 +41,7 @@ if (!globalThis.File) {
   };
 }
 
-const { ViewerController } = await import(path.join(ROOT, 'web/js/controllers/ViewerController.js'));
+const { ViewerController } = await import('@neurodesk/webapp-components/viewer');
 const { MaskDrawingController } = await import(path.join(ROOT, 'web/js/controllers/MaskDrawingController.js'));
 
 // Fake NiiVue that records every call. Mirrors the surface ViewerController

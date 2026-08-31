@@ -10,7 +10,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'web/models/manifest
 const html = fs.readFileSync(path.join(ROOT, 'web/index.html'), 'utf8');
 const app = fs.readFileSync(path.join(ROOT, 'web/js/lnm-app.js'), 'utf8');
 const worker = fs.readFileSync(path.join(ROOT, 'web/js/inference-worker.js'), 'utf8');
-const executor = fs.readFileSync(path.join(ROOT, 'web/js/controllers/InferenceExecutor.js'), 'utf8');
+const executor = fs.readFileSync(path.join(ROOT, 'web/js/controllers/CalmarPipeline.js'), 'utf8');
 const spatial = fs.readFileSync(path.join(ROOT, 'web/js/modules/spatial-file.js'), 'utf8');
 const benchmark = fs.readFileSync(path.join(ROOT, 'scripts/benchmark_lesion_models.py'), 'utf8');
 const gap = fs.readFileSync(path.join(ROOT, 'scripts/deepisles_gap_analysis.py'), 'utf8');
@@ -59,7 +59,7 @@ assert.match(app, /DeepISLES seed is in DWI space[\s\S]*not starting T1 mask rev
   'app must not silently feed an incompatible DWI-space mask into the T1 pipeline');
 
 assert.match(executor, /\brunDeepIslesInference\s*\(/);
-assert.match(executor, /type:\s*['"]run-deepisles-inference['"]/);
+assert.match(executor, /executeCommand\(['"]run-deepisles-inference['"]/);
 assert.match(worker, /case\s+['"]run-deepisles-inference['"]/);
 assert.match(worker, /\bstepDeepIslesInference\s*\(/);
 assert.match(worker, /resampleAffine/);

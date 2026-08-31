@@ -163,7 +163,7 @@ async function main() {
     };
     const completion = page.evaluate(async ({ routedInputUrl, model, selectedOverlap, selectedSourceChunkSize }) => {
       const inputData = await (await fetch(routedInputUrl)).arrayBuffer();
-      const worker = new Worker('/js/inference-worker.js');
+      const worker = new Worker('/js/inference-worker.js', { type: 'module' });
       await new Promise((resolvePromise, reject) => {
         let initialized = false;
         worker.onerror = event => reject(new Error(event.message));

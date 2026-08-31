@@ -93,10 +93,15 @@ export async function verifyMuscleMapFullPipeline(page, appUrl, { timeout = 180_
     requireCondition(output.includes('Generated 1 segmentation.'), `segmentation failed:\n${output}`);
     await page.waitForFunction(() => !document.querySelector('#calculateMetrics')?.disabled, null, { timeout: 30_000 });
     await page.locator('#calculateMetrics').click();
-    await page.waitForFunction(() => {
-      const text = document.querySelector('#consoleOutput')?.innerText ?? '';
-      return text.includes('Metrics completed successfully!') || text.includes('Error:');
-    }, null, { timeout: 60_000 });
+    try {
+      await page.waitForFunction(() => {
+        const text = document.querySelector('#consoleOutput')?.innerText ?? '';
+        return text.includes('Metrics ready.') || text.includes('Error:');
+      }, null, { timeout: 60_000 });
+    } catch (error) {
+      const consoleOutput = await page.locator('#consoleOutput').innerText();
+      throw new Error(`metrics did not finish: ${error.message}\n${consoleOutput}`);
+    }
 
     const state = await page.evaluate(async () => {
       const segmentation = window.app.segmentationResults[0];
@@ -122,7 +127,7 @@ export async function verifyMuscleMapFullPipeline(page, appUrl, { timeout = 180_
     requireCondition(output.includes('Session created. Input: input, Output: output'), 'real model session was not created');
     requireCondition(output.includes('Inference complete: 1 working slices'), 'real model inference did not finish');
     requireCondition(output.includes('Keeping the largest 6-connected component'), 'connected-component cleanup did not run');
-    requireCondition(output.includes('Metrics completed successfully!'), `metrics failed:\n${output}`);
+    requireCondition(output.includes('Metrics ready.'), `metrics failed:\n${output}`);
     requireCondition(requestedThreads >= 2, `release smoke used ${requestedThreads || 0} WASM threads`);
     requireCondition(requestedThreads === state.browserThreads, `ORT requested ${requestedThreads} of ${state.browserThreads} browser threads`);
     requireCondition(state.modelOption?.includes('113 structures, v1.4'), `wrong model selected: ${state.modelOption}`);

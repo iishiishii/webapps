@@ -7,7 +7,7 @@
 
 import { erodeMask3D, dilateMask3D, fillHoles3D } from '../modules/mask/MorphologyOps.js';
 import { computeOtsuThreshold } from '../modules/mask/ThresholdUtils.js';
-import { createMaskNifti, createNiftiHeaderFromVolume } from '../modules/file-io/NiftiUtils.js';
+import { createMaskNifti, createNiftiHeaderFromVolume } from '@neurodesk/webapp-components/file-io';
 
 export class MaskController {
   /**

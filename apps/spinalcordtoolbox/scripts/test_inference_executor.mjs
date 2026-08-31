@@ -35,7 +35,7 @@ globalThis.URL = globalThis.URL || {};
 if (!globalThis.URL.createObjectURL) globalThis.URL.createObjectURL = () => 'blob:fake';
 if (!globalThis.URL.revokeObjectURL) globalThis.URL.revokeObjectURL = () => {};
 
-const { InferenceExecutor } = await import('../web/js/controllers/InferenceExecutor.js');
+const { SctPipeline } = await import('../web/js/controllers/SctPipeline.js');
 
 function makeExecutor(callbacks = {}) {
   const log = [];
@@ -47,7 +47,7 @@ function makeExecutor(callbacks = {}) {
   const volumes = [];
   const initialized = [];
 
-  const exec = new InferenceExecutor({
+  const exec = new SctPipeline({
     updateOutput: (m) => log.push(m),
     setProgress: (v, t) => progress.push([v, t]),
     onComplete: () => completed.push(true),
@@ -73,26 +73,7 @@ function attachFakeWorker(exec) {
     terminated: false
   };
   exec.worker = fakeWorker;
-  // Attach the same handlers _setupWorker would have installed.
-  exec.worker.onmessage = (e) => {
-    const { type, ...data } = e.data;
-    switch (type) {
-      case 'progress': exec.setProgress(data.value, data.text); break;
-      case 'log': exec.updateOutput(data.message); break;
-      case 'error': exec._handleError(data.message); break;
-      case 'initialized':
-        exec.workerReady = true;
-        exec.workerInitializing = false;
-        exec.webgpuAvailable = !!data.webgpuAvailable;
-        exec.updateOutput('ONNX Runtime ready');
-        exec.onInitialized();
-        break;
-      case 'complete': exec._handleComplete(); break;
-      case 'stageData': exec._handleStageData(data); break;
-      case 'step-complete': exec._handleStepComplete(data.step); break;
-      case 'volume-info': exec._handleVolumeInfo(data); break;
-    }
-  };
+  exec.worker.onmessage = event => exec.handleMessage(event.data);
   return { fakeWorker, sent };
 }
 
@@ -283,4 +264,4 @@ function attachFakeWorker(exec) {
   assert.equal(fakeWorker.terminated, false);
 }
 
-console.log('InferenceExecutor tests passed');
+console.log('SctPipeline shared executor tests passed');

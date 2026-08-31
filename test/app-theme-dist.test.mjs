@@ -43,7 +43,7 @@ test('adds the shared theme to a standalone app distribution', async (t) => {
   });
 
   const html = await readFile(join(distDir, 'index.html'), 'utf8');
-  assert.match(html, /<html data-neurodesk-app="example-app" data-neurodesk-theme="dark" lang="en">/);
+  assert.match(html, /<html data-neurodesk-app="example-app" data-neurodesk-shell="static-html" data-neurodesk-theme="dark" lang="en">/);
   assert.match(html, /href="\.\/app-theme\.css" data-neurodesk-app-theme/);
   assert.match(html, /src="\.\/theme\.js" data-neurodesk-theme-controller/);
   assert.match(html, /src="\.\/app-shell\.js" data-neurodesk-app-shell/);

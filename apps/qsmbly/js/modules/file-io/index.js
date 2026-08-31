@@ -4,4 +4,4 @@
  * Re-exports all file I/O utilities.
  */
 
-export * from './NiftiUtils.js';
+export * from '@neurodesk/webapp-components/file-io';

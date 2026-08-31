@@ -1,19 +1,6 @@
-import { createNeuroWebapp } from '../../src/core/index.js';
-import { PipelineRegistry } from '../../src/pipeline/index.js';
-import { vesselboostPlugin } from '../../src/plugins/vesselboost/index.js';
+import { mountImagingWorkspace } from '../../src/core/index.js';
+import { PipelineExecutor } from '../../src/inference/index.js';
 
-const registry = new PipelineRegistry();
-registry.registerPlugin(vesselboostPlugin);
-
-const app = createNeuroWebapp({
-  title: 'Step Pipeline',
-  subtitle: 'Template',
-  plugins: [vesselboostPlugin],
-  sidebarSections: registry.require('vesselboost-step-pipeline').stages.map(stage => ({
-    id: `stage-${stage.id}`,
-    title: stage.label,
-    content: `Worker command: ${stage.workerCommand}`
-  }))
-});
-
-globalThis.templateApp = { app, registry };
+const workspace = mountImagingWorkspace({ controls: '#controls', viewer: '#viewer', status: '#status', title: 'Step Pipeline' });
+const executor = new PipelineExecutor({ workerUrl: './worker.js', steps: ['load', 'preprocess', 'inference'] });
+globalThis.templateApp = { workspace, executor };

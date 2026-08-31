@@ -178,7 +178,7 @@ function assertNegativeCases() {
   await ensureSctBatchFixtures(ROOT);
   indexHtml = fs.readFileSync(path.join(ROOT, 'web/index.html'), 'utf8');
   appJs = fs.readFileSync(path.join(ROOT, 'web/js/spinalcordtoolbox-app.js'), 'utf8');
-  executorJs = fs.readFileSync(path.join(ROOT, 'web/js/controllers/InferenceExecutor.js'), 'utf8');
+  executorJs = fs.readFileSync(path.join(ROOT, 'web/js/controllers/SctPipeline.js'), 'utf8');
   workerJs = fs.readFileSync(path.join(ROOT, 'web/js/inference-worker.js'), 'utf8');
   processingJs = fs.readFileSync(path.join(ROOT, 'web/js/modules/sct-processing.js'), 'utf8');
   vertebraeJs = fs.readFileSync(path.join(ROOT, 'web/js/modules/vertebrae.js'), 'utf8');

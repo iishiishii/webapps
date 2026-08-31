@@ -12,7 +12,6 @@ const sourceDir = join(appDir, 'model-sources');
 const releasePath = join(sourceDir, 'release.json');
 const generatedCatalogPath = join(appDir, 'web', 'js', 'app', 'model-catalog.generated.js');
 const manifestPath = join(repoRoot, 'models', 'musclemap.manifest.json');
-const pluginPath = join(repoRoot, 'packages', 'components', 'src', 'plugins', 'musclemap', 'index.js');
 const packagePath = join(appDir, 'package.json');
 
 const checkOnly = process.argv.includes('--check');
@@ -269,40 +268,6 @@ function renderManifest(release, models) {
   }, null, 2)}\n`;
 }
 
-function renderPlugin(models) {
-  const tasks = models.filter(model => model.status === 'active' || model.status === 'legacy').map(model => ({
-    id: registryId(model, models),
-    label: model.legacy ? `${model.label} (Legacy v${model.modelVersion})` : `${model.label} (v${model.modelVersion})`,
-    modelAssets: [{
-      id: `musclemap-${registryId(model, models)}`,
-      filename: model.filename,
-      numClasses: model.numClasses,
-      roiSize: model.roiSize,
-      modelVersion: model.modelVersion,
-      labelSpaceId: model.labelSpaceId,
-      legacy: model.legacy,
-      revision: model.asset.revision,
-      url: model.asset.url,
-      bytes: model.asset.bytes,
-      sha256: model.asset.sha256,
-      parts: model.asset.parts
-    }]
-  }));
-  return `import { definePlugin } from '../plugin.js';\n\n` +
-    `export const musclemapPlugin = definePlugin(${JSON.stringify({
-      id: 'musclemap',
-      name: 'MuscleMap',
-      description: 'MuscleMap model family metadata and metrics/legend UI hooks.',
-      sourceRepos: ['MuscleMap/MuscleMap', 'neurodesk/musclemap-webapp'],
-      capabilities: ['onnx-segmentation', 'multi-label-metrics', 'label-legend'],
-      tasks,
-      workerSteps: {
-        run: { requestType: 'run', outputStages: ['segmentation'], events: ['detectedLabels', 'metrics'] }
-      }
-    }, null, 2)});\n\n` +
-    `export const muscleMapPlugin = musclemapPlugin;\n`;
-}
-
 async function writeOrCheck(path, expected) {
   if (checkOnly) {
     const actual = await readFile(path, 'utf8').catch(() => '');
@@ -323,8 +288,7 @@ for (const model of release.models) models.push(await loadModel(model, release))
 
 await Promise.all([
   writeOrCheck(generatedCatalogPath, renderCatalog(release, models)),
-  writeOrCheck(manifestPath, renderManifest(release, models)),
-  writeOrCheck(pluginPath, renderPlugin(models))
+  writeOrCheck(manifestPath, renderManifest(release, models))
 ]);
 
 console.log(checkOnly ? 'MuscleMap generated model contracts are current.' : 'Generated MuscleMap model contracts.');

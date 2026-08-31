@@ -14,7 +14,7 @@ const metadata = {
 test('injects the hosted app identity, theme, and shared top-bar contract', () => {
   const themed = injectCompositeTheme(document, metadata);
 
-  assert.match(themed, /<html data-neurodesk-app="example-app" data-neurodesk-theme="dark" lang="en">/);
+  assert.match(themed, /<html data-neurodesk-app="example-app" data-neurodesk-shell="static-html" data-neurodesk-theme="dark" lang="en">/);
   assert.match(themed, /<script src="\.\.\/theme\.js" data-neurodesk-theme-controller><\/script>/);
   assert.match(themed, /<link rel="stylesheet" href="\.\.\/app-theme\.css" data-neurodesk-app-theme>/);
   assert.match(themed, /src="\.\.\/app-shell\.js" data-neurodesk-app-shell/);

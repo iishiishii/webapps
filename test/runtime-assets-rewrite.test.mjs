@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -24,7 +24,7 @@ test('composite rewrite gives ONNX Runtime an absolute WASM base URL', async (t)
   const loaders = [
     { name: 'ort.webgpu.min.js', sourceApp: 'musclemap' },
     { name: 'ort.webgpu.bundle.min.mjs', sourceApp: 'calmar' },
-    { name: 'ort.min.js', sourceApp: 'seedseg' },
+    { name: 'ort.min.js', sourceApp: 'calmar' },
   ];
 
   await mkdir(join(repoRoot, 'runtime-assets'), { recursive: true });
@@ -102,4 +102,45 @@ test('composite rewrite gives ONNX Runtime an absolute WASM base URL', async (t)
       assert.doesNotMatch(context.ort.env.wasm.wasmPaths, /_runtime\/_runtime/, app.id);
     }
   }
+});
+
+test('composite rewrite preserves vendored component file suffixes before removing app copies', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'component-runtime-rewrite-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const repoRoot = join(root, 'repo');
+  const siteDist = join(root, 'site');
+  const appDist = join(siteDist, 'calmar');
+  await mkdir(join(repoRoot, 'runtime-assets'), { recursive: true });
+  await mkdir(join(repoRoot, 'packages', 'components', 'src', 'styles'), { recursive: true });
+  await mkdir(join(appDist, 'js'), { recursive: true });
+  await mkdir(join(appDist, 'vendor', 'webapp-components', 'src'), { recursive: true });
+  await writeFile(join(repoRoot, 'runtime-assets', 'manifest.json'), JSON.stringify({
+    schema_version: 1,
+    families: [],
+  }));
+  await writeFile(join(repoRoot, 'packages', 'components', 'src', 'index.js'), 'export {};');
+  await writeFile(join(repoRoot, 'packages', 'components', 'src', 'styles', 'base.css'), ':root {}');
+  await writeFile(join(appDist, 'index.html'), `
+    <script type="importmap">{"imports":{"@neurodesk/webapp-components":"./vendor/webapp-components/src/index.js"}}</script>
+    <link rel="stylesheet" href="vendor/webapp-components/src/styles/base.css">
+  `);
+  await writeFile(
+    join(appDist, 'js', 'worker.js'),
+    "import '../vendor/webapp-components/src/index.js';",
+  );
+
+  await assembleRuntimeAssetStore({
+    repoRoot,
+    siteDist,
+    registry: { apps: [{ id: 'calmar', path: 'calmar' }] },
+  });
+
+  const html = await readFile(join(appDist, 'index.html'), 'utf8');
+  const worker = await readFile(join(appDist, 'js', 'worker.js'), 'utf8');
+  assert.match(html, /\.\.\/_runtime\/webapp-components\/0\.1\.2\/src\/index\.js/);
+  assert.match(html, /\.\.\/_runtime\/webapp-components\/0\.1\.2\/src\/styles\/base\.css/);
+  assert.match(worker, /\.\.\/\.\.\/_runtime\/webapp-components\/0\.1\.2\/src\/index\.js/);
+  assert.doesNotMatch(`${html}\n${worker}`, /vendor\/webapp-components/);
+  await assert.rejects(access(join(appDist, 'vendor', 'webapp-components')));
 });

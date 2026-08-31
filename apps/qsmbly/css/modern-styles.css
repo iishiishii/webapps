@@ -1,62 +1,7 @@
 /* QSM-WASM Modern Styles */
 
-:root {
-  /* Height of the shared QSM ecosystem bar pinned at the very top */
-  --qsm-eco-h: 34px;
+:root { --qsm-eco-h: 34px; --toolbar-height: 34px; }
 
-  /* Color palette - professional medical/scientific theme */
-  --color-bg: #0f1419;
-  --color-surface: #1a2332;
-  --color-surface-elevated: #232f42;
-  --color-border: #2d3f5a;
-  --color-border-light: #3d5275;
-
-  --color-text: #e8edf4;
-  --color-text-muted: #8b99ad;
-  --color-text-dim: #5c6b7f;
-
-  --color-primary: #3b82f6;
-  --color-primary-hover: #2563eb;
-  --color-primary-glow: rgba(59, 130, 246, 0.25);
-
-  --color-success: #10b981;
-  --color-success-bg: rgba(16, 185, 129, 0.1);
-
-  --color-warning: #f59e0b;
-  --color-warning-bg: rgba(245, 158, 11, 0.1);
-
-  --color-error: #ef4444;
-  --color-error-bg: rgba(239, 68, 68, 0.1);
-
-  --color-accent: #8b5cf6;
-
-  /* Spacing */
-  --space-xs: 0.25rem;
-  --space-sm: 0.5rem;
-  --space-md: 1rem;
-  --space-lg: 1.5rem;
-  --space-xl: 2rem;
-  --space-2xl: 3rem;
-
-  /* Border radius */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.25);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.3);
-  --shadow-glow: 0 0 20px var(--color-primary-glow);
-
-  /* Transitions */
-  --transition-fast: 150ms ease;
-  --transition-normal: 250ms ease;
-
-  /* Shared height for the viewer toolbar and sidebar export bar (kept in line) */
-  --toolbar-height: 34px;
-}
 
 /* Reset & Base */
 *, *::before, *::after {

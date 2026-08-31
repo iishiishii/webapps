@@ -31,6 +31,7 @@ test('only declared app-scoped runtime families remain in composite app copies',
           'ort-wasm-simd-threaded.jsep.wasm',
           'ort-wasm-simd-threaded.mjs',
           'ort-wasm-simd-threaded.wasm',
+          'ort.webgpu.bundle.min.mjs',
           'ort.webgpu.min.js',
         ]);
       } else {
@@ -56,7 +57,7 @@ test('composite references shared runtimes from the root store', async () => {
     workers += 1;
     assert.match(source, /_runtime\/(?:ort-web|nifti-reader)\//, `${app.id} worker does not use shared runtime`);
     if (app.app_scoped_runtime_families.includes('ort-web')) {
-      assert.match(source, /\.\.\/wasm\/ort\.webgpu\.min\.js/);
+      assert.match(source, /\.\.\/wasm\/ort\.webgpu\.bundle\.min\.mjs/);
       assert.doesNotMatch(source, /_runtime\/ort-web/);
     }
   }
