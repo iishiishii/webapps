@@ -239,6 +239,61 @@ try {
       brandPrimary: getComputedStyle(document.documentElement).getPropertyValue('--nd-brand-primary').trim(),
       pageBackground: getComputedStyle(document.body).backgroundColor,
     }));
+    const darkStartPage = await page.evaluate(() => {
+      const startPage = [...document.querySelectorAll('.start-page')]
+        .find((element) => element.getBoundingClientRect().height > 0);
+      if (!startPage) return null;
+      return getComputedStyle(startPage).backgroundColor;
+    });
+    const darkStartPageContrast = await page.evaluate(() => {
+      const pairings = [
+        ['.start-hero h2', '.start-page'],
+        ['.start-intro', '.start-page'],
+        ['.start-local-badge', '.start-local-badge'],
+        ['.start-local-panel li', '.start-local-panel'],
+        ['.start-step h4', '.start-step'],
+        ['.start-step p', '.start-step'],
+      ];
+      const rgba = (value) => {
+        const channels = (value.match(/[\d.]+/g) ?? []).map(Number);
+        return [channels[0], channels[1], channels[2], channels[3] ?? 1];
+      };
+      const composite = (foreground, background) => {
+        const alpha = foreground[3] + background[3] * (1 - foreground[3]);
+        return [0, 1, 2].map((index) => (
+          foreground[index] * foreground[3]
+          + background[index] * background[3] * (1 - foreground[3])
+        ) / alpha).concat(alpha);
+      };
+      const effectiveBackground = (element) => {
+        const parent = element.parentElement
+          ? effectiveBackground(element.parentElement)
+          : [255, 255, 255, 1];
+        return composite(rgba(getComputedStyle(element).backgroundColor), parent);
+      };
+      const luminance = (value) => value.slice(0, 3).map((channel) => channel / 255)
+        .map((channel) => channel <= 0.04045
+          ? channel / 12.92
+          : ((channel + 0.055) / 1.055) ** 2.4)
+        .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+      const contrast = (foreground, background) => {
+        const values = [luminance(foreground), luminance(background)];
+        return (Math.max(...values) + 0.05) / (Math.min(...values) + 0.05);
+      };
+      return pairings.flatMap(([textSelector, backgroundSelector]) => {
+        const textElement = document.querySelector(textSelector);
+        const backgroundElement = textElement?.closest(backgroundSelector);
+        if (!textElement || !backgroundElement || textElement.getBoundingClientRect().height === 0) return [];
+        const foreground = rgba(getComputedStyle(textElement).color);
+        const background = effectiveBackground(backgroundElement);
+        return [{
+          selector: textSelector,
+          foreground: getComputedStyle(textElement).color,
+          background: background.slice(0, 3).map(Math.round).join(' '),
+          ratio: contrast(foreground, background),
+        }];
+      });
+    });
 
     if (!response?.ok()) failures.push(`${app.id}: document returned ${response?.status() ?? 'no response'}`);
     if (!title.trim()) failures.push(`${app.id}: empty document title`);
@@ -276,6 +331,14 @@ try {
     if (themeState.brandPrimary !== '#91c84a') failures.push(`${app.id}: Neurocontainers dark-theme tokens were not applied`);
     if (!['rgb(16, 20, 13)', 'rgb(10, 12, 8)'].includes(themeState.pageBackground)) {
       failures.push(`${app.id}: page background is outside the dark palette: ${themeState.pageBackground}`);
+    }
+    if (darkStartPage && !['rgb(22, 26, 14)', 'rgb(16, 20, 13)', 'rgb(10, 12, 8)'].includes(darkStartPage)) {
+      failures.push(`${app.id}: start page background is outside the dark palette: ${darkStartPage}`);
+    }
+    for (const { selector, foreground, background, ratio } of darkStartPageContrast) {
+      if (ratio < 4.5) {
+        failures.push(`${app.id}: ${selector} dark-theme contrast is ${ratio.toFixed(2)}:1 (${foreground} on ${background})`);
+      }
     }
 
     const overflowingControls = await page.evaluate(() => [...document.querySelectorAll('.nd-imaging-controls')]

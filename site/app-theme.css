@@ -136,9 +136,9 @@
   --color-brand-700: 22 28 16;
 }
 
-/* SurfAnnotate predates the shared surface/text tokens and names its light
-   surface token "white". Bridge those legacy roles into the dark palette. */
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"] {
+/* Older non-React apps use light-palette role names for surfaces and text.
+   Bridge those roles for every hosted shell that still consumes them. */
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) {
   --nd-brand-white: var(--nd-brand-surface);
   --nd-ink-muted: var(--nd-brand-text-muted);
   --nd-line-neutral: var(--nd-brand-border);
@@ -160,71 +160,71 @@
   color: var(--nd-brand-text-dim);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"]
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"])
   :is(.start-page, .nd-imaging-workspace, #controls, .workflow-panel, #status, .cite-dialog) {
   color: var(--nd-brand-text);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"]
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"])
   :is(.start-kicker, .start-how > h3, .panel-step, .workflow-help summary, .readout) {
   color: var(--nd-brand-primary);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"]
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"])
   :is(.start-hero h2, .start-step h4, .panel-heading h2, .row, .check, .instruction-note, .hint strong, .layer-list li, .point-list) {
   color: var(--nd-brand-text);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"] .start-intro {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) .start-intro {
   color: var(--nd-brand-text-muted);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"]
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"])
   :is(.start-local-badge, .start-local-panel) {
   color: var(--nd-brand-text-muted);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"]
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"])
   :is(.workflow-help, .layer-list li, .start-footer) {
   color: var(--nd-brand-text-muted);
   background: var(--nd-brand-pale);
   border-color: var(--nd-brand-border);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"] #controls
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls
   :is(select, input[type="text"], input[type="number"]) {
   color: var(--nd-brand-text);
   background: var(--nd-brand-unselected);
   border-color: var(--nd-brand-border);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"] #controls button {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls button {
   color: var(--nd-brand-text);
   background: var(--nd-brand-pale);
   border-color: var(--nd-brand-border);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"] #controls
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls
   :is(button, select, input):disabled {
   color: var(--nd-brand-text-dim);
   background: var(--nd-brand-unselected);
   border-color: var(--nd-brand-border);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"] #controls
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls
   input:disabled:not([type="checkbox"]):not([type="range"]):not([type="file"]) {
   color: var(--nd-brand-text-dim);
   background: var(--nd-brand-unselected);
   border-color: var(--nd-brand-border);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"] #controls button.primary {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls button.primary {
   color: var(--nd-brand-action-text);
   background: var(--nd-brand-primary);
   border-color: var(--nd-brand-primary);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"] #controls .segmented button.active {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls .segmented button.active {
   color: var(--nd-brand-menu-text);
   background: var(--nd-brand-selected);
   border-color: var(--nd-brand-selected);
@@ -232,50 +232,50 @@
 
 /* SurfAnnotate's file input is visually represented by its adjacent label.
    Theme the visible control itself, including the disabled overlay state. */
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"] .upload-visual {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) .upload-visual {
   color: var(--nd-brand-text);
   background: var(--nd-brand-pale);
   border-color: var(--nd-brand-primary);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"] .upload-visual > svg {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) .upload-visual > svg {
   color: var(--nd-brand-primary);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"] .upload-action {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) .upload-action {
   color: var(--nd-brand-action-text);
   background: var(--nd-brand-primary);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"] #controls
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls
   .upload-field > input:disabled + .upload-visual {
   color: var(--nd-brand-text-dim);
   background: var(--nd-brand-unselected);
   border-color: var(--nd-brand-border-strong);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"] #controls
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls
   .upload-field > input:disabled + .upload-visual :is(svg, small) {
   color: var(--nd-brand-text-dim);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"] #controls
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls
   .upload-field > input:disabled + .upload-visual .upload-action {
   color: var(--nd-brand-text-dim);
   background: var(--nd-brand-pale);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"]
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"])
   :is(.drop-hint strong, .start-step-number) {
   color: var(--nd-brand-text);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"]
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"])
   :is(.start-footer a, .cite-section h4, .cite-item a, .cite-close) {
   color: var(--nd-brand-light);
 }
 
-:root[data-neurodesk-shell="static-html"][data-neurodesk-theme="dark"] .cite-close:hover {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) .cite-close:hover {
   color: var(--nd-brand-action-text);
 }
 
