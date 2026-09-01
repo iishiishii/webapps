@@ -1,5 +1,11 @@
 # zarro
 
+## 0.1.23
+
+### Patch Changes
+
+- Promote SurfAnnotate and ZARRo from experimental to active support.
+
 ## 0.1.22
 
 ### Patch Changes

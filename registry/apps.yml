@@ -269,10 +269,10 @@ apps:
     runtime: vite-webgpu
     model_manifest: null
     asset_manifest_schema: null
-    source: neurodesk/webapps@local
+    source: neurodesk/webapps@9ea138c6aaca51d3f6f2b723fb59a3d5ac692eae
     license: MIT
     maintainers: [felenitaribeiro]
-    support_status: experimental
+    support_status: active
     shell: imaging-workspace
     ci:
       toolchains: [node]
@@ -289,10 +289,10 @@ apps:
     runtime: vite-webgpu
     model_manifest: null
     asset_manifest_schema: null
-    source: neurodesk/webapps@local
+    source: neurodesk/webapps@9ea138c6aaca51d3f6f2b723fb59a3d5ac692eae
     license: BSD-2-Clause
     maintainers: [neurodesk]
-    support_status: experimental
+    support_status: active
     shell: imaging-workspace
     ci:
       toolchains: [node]
