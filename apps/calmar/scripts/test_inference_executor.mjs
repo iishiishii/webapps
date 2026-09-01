@@ -1,5 +1,5 @@
 #!/usr/bin/env node --no-warnings
-// Phase 35: behavior tests for web/js/controllers/InferenceExecutor.js.
+// Phase 35: behavior tests for the shared executor through CalmarPipeline.
 //
 // The executor mediates the message protocol between the orchestrator
 // and the worker. Source-grep covered method existence; this test
@@ -44,7 +44,7 @@ globalThis.URL = { createObjectURL: () => 'blob:fake', revokeObjectURL: () => {}
 globalThis.Blob = class { constructor(parts) { this.parts = parts; } };
 globalThis.File = class { constructor(parts, name) { this.parts = parts; this.name = name; } };
 
-const { InferenceExecutor } = await import(path.join(ROOT, 'web/js/controllers/InferenceExecutor.js'));
+const { CalmarPipeline } = await import(path.join(ROOT, 'web/js/controllers/CalmarPipeline.js'));
 
 function makeExecutor() {
   FakeWorker.instances.length = 0;
@@ -52,7 +52,7 @@ function makeExecutor() {
     output: [], debugOutput: [], progress: [], stageData: [], complete: 0,
     error: [], initialized: 0, stepComplete: [], volumeInfo: []
   };
-  const exec = new InferenceExecutor({
+  const exec = new CalmarPipeline({
     updateOutput: (m) => events.output.push(m),
     updateDebugOutput: (m, options) => events.debugOutput.push({ message: m, options }),
     setProgress: (v, l) => events.progress.push([v, l]),
@@ -314,4 +314,4 @@ function makeExecutor() {
   assert.equal(exec.currentRunningStep, null);
 }
 
-console.log('InferenceExecutor OK: 14 cases (init/log-routing/load/run/stageData/step/error/cancel/clear/volumeInfo/inverse-warp).');
+console.log('CalmarPipeline OK: shared executor behavior covered.');

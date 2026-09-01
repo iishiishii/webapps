@@ -21,7 +21,7 @@ Everything runs in WebAssembly + WebGPU/WebGL2 on your machine, so your images a
 
 Rendering uses [NiiVue](https://niivue.com/); DICOM import uses [dcm2niix](https://github.com/rordenlab/dcm2niix).
 
-> The QC is a hard-segmentation MRIQC variant: with a masked background it omits the air-noise term, so CNR is a *relative* contrast measure, not comparable to MRIQC normative values. See [src/niimath/](src/niimath/) / niimath's `--qc`.
+> The QC is a hard-segmentation MRIQC variant: with a masked background it omits the air-noise term, so CNR is a *relative* contrast measure, not comparable to MRIQC normative values. See [runtime-support niimath](../../packages/runtime-support/src/niimath/) / niimath's `--qc`.
 
 ## Develop
 
@@ -41,7 +41,7 @@ in the application bundle.
 
 ## License
 
-**BSD-2-Clause.** niimath is vendored as local source under [src/niimath/](src/niimath/) (its `--qc` metrics and `-conform` are newer than the current npm release); this goes away once niimath republishes to npm. The brainchop tfjs inference engine is vendored under [src/brainchop/](src/brainchop/).
+**BSD-2-Clause.** niimath is shared through [packages/runtime-support](../../packages/runtime-support/src/niimath/) because its `--qc` metrics and `-conform` are newer than the current npm release. The app can switch back to npm once niimath republishes. The brainchop tfjs inference engine is vendored under [src/brainchop/](src/brainchop/).
 
 ## Links
 

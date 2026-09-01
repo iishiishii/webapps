@@ -1,0 +1,1663 @@
+// Real browser smoke test. Proves the deployed contract that Node tests cannot:
+// cross-origin isolation, worker loading, and app boot. Runs against `vite preview`
+// (see playwright.config.js) so it exercises the built, header-served output.
+import { test, expect } from "@playwright/test";
+import { decodeCompactShareState } from "../src/compact_share_state.ts";
+
+async function createShareUrl(page) {
+  await page.getByRole("button", { name: "Create share link" }).click();
+  await expect(page.locator("#shareLink")).toBeVisible();
+  await expect(page.locator("#shareStatus")).toContainText("Share link ready");
+  return page.locator("#shareLink").inputValue();
+}
+
+async function decodedShareParams(url) {
+  const state = new URL(url).searchParams.get("state");
+  const params = await decodeCompactShareState(state);
+  expect(params).not.toBeNull();
+  return params;
+}
+
+async function readDownload(download) {
+  const stream = await download.createReadStream();
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+
+function parseNiftiHeader(buffer) {
+  const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  const headerSize = view.getInt32(0, true);
+  if (headerSize === 348) {
+    return {
+      version: 1,
+      shape: [42, 44, 46].map((offset) => view.getInt16(offset, true)),
+      voxelOffset: view.getFloat32(108, true),
+    };
+  }
+  if (headerSize === 540) {
+    return {
+      version: 2,
+      shape: [24, 32, 40].map((offset) =>
+        Number(view.getBigInt64(offset, true)),
+      ),
+      voxelOffset: Number(view.getBigInt64(168, true)),
+    };
+  }
+  throw new Error(`Unexpected NIfTI header size ${headerSize}`);
+}
+
+async function niftiEstimate(page) {
+  return page.locator("#niftiEstimate").evaluate((output) => ({
+    level: Number(output.dataset.level),
+    shape: (output.dataset.shape ?? "").split(",").map(Number),
+    bytes: Number(output.dataset.bytes),
+    version: Number(output.dataset.version),
+  }));
+}
+
+async function downloadAndVerifyNifti(page, expectedFilename) {
+  const estimate = await niftiEstimate(page);
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator("#downloadNifti").click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(expectedFilename);
+  const bytes = await readDownload(download);
+  const header = parseNiftiHeader(bytes);
+  expect(bytes.byteLength).toBe(estimate.bytes);
+  expect(header.version).toBe(estimate.version);
+  expect(header.shape).toEqual(estimate.shape);
+  expect(header.voxelOffset).toBe(estimate.version === 1 ? 352 : 544);
+  await expect(page.locator("#niftiProgress")).toBeHidden();
+  await expect(page.locator("#cancelNifti")).toBeDisabled();
+  return { estimate, bytes, header };
+}
+
+async function clickKnownCanvasPointUntilLocationChanges(
+  page,
+  points,
+  previousCount,
+) {
+  for (const point of points) {
+    await page.mouse.click(point.x, point.y);
+    const currentCount = await page.evaluate(() => window.__locationChangeCount);
+    if (currentCount > previousCount) return point;
+  }
+  throw new Error("Canvas clicks did not change the crosshair location");
+}
+
+async function findInteractiveCanvasPoints(page, canvasBox, count = 4) {
+  let previousCount = await page.evaluate(() => window.__locationChangeCount);
+  const points = [];
+  // NiiVue letterboxes slice tiles according to volume aspect ratio, so a
+  // fixed canvas percentage is not guaranteed to contain image data. Probe a
+  // compact CSS-pixel grid and retain proven points that map to distinct voxels.
+  for (let yFraction = 0.1; yFraction < 0.95; yFraction += 0.05) {
+    for (let xFraction = 0.1; xFraction < 0.95; xFraction += 0.05) {
+      const x = canvasBox.x + canvasBox.width * xFraction;
+      const y = canvasBox.y + canvasBox.height * yFraction;
+      await page.mouse.click(x, y);
+      const currentCount = await page.evaluate(() => window.__locationChangeCount);
+      if (currentCount > previousCount) {
+        points.push({ x, y });
+        if (points.length === count) return points;
+      }
+      previousCount = currentCount;
+    }
+  }
+  throw new Error(`Only ${points.length} interactive canvas points were found`);
+}
+
+test("app boots", async ({ page }) => {
+  await page.goto("/?source=custom");
+  await expect(page.locator(".nd-imaging-workspace")).toBeVisible();
+  await expect(page.locator("#nv-canvas")).toBeVisible();
+  await expect(page.locator("#source")).toHaveValue("custom");
+  await expect(page.locator("#source option")).toHaveText(["DANDI Archive", "OME-Zarr URL"]);
+  await expect(page.getByText("DANDI LEC SPIM example", { exact: true })).toHaveCount(0);
+  await expect(page.locator("#dandiArchiveControl")).toBeHidden();
+  await expect(page.locator("#zarrUrlControl")).toBeVisible();
+  await page.getByLabel("OME-Zarr store URL 1").fill("https://example.org/test.ome.zarr");
+  await expect(page.getByRole("button", { name: "Remove OME-Zarr store 1" })).toBeEnabled();
+  await page.getByRole("button", { name: "Remove OME-Zarr store 1" }).click();
+  await expect(page.getByLabel("OME-Zarr store URL 1")).toHaveValue("");
+  await expect(page).not.toHaveURL(/url=/);
+  await expect(page.getByRole("button", { name: "Apply" })).toBeDisabled();
+  await expect(page.locator("#scrollZoomSpeed")).toHaveValue("5");
+  await expect(page.locator("#scrollZoomSpeed")).toHaveAttribute("max", "10");
+  await expect(page.locator("#detailBudget")).toHaveValue("8");
+  await expect(page.locator("#scrollZoomSpeed")).toBeHidden();
+  await expect(page.locator("#detailBudget")).toBeHidden();
+  await expect(page.locator("#showStats")).toBeHidden();
+  await expect(page.getByText("Advanced", { exact: true })).toBeVisible();
+  await expect(page.locator("#panX")).toBeHidden();
+  await expect(page.locator("#panY")).toBeHidden();
+  await expect(page.locator("#panZ")).toBeHidden();
+  await expect(page.getByText("Pan Z", { exact: true })).toHaveCount(0);
+  await expect(page.locator("#axialSlice")).toBeVisible();
+  const topBar = page.locator(".nd-app-bar:visible");
+  await expect(topBar).toHaveCount(1);
+  await expect(topBar.locator(".nd-app-bar__identity")).toContainText("ZARRo");
+  await expect(topBar.locator(".nd-app-bar__version")).toHaveText(/^v\d+\.\d+/);
+  for (const name of ["About", "Cite", "Privacy", "More Apps", "GitHub"]) {
+    await expect(topBar.getByRole(name === "More Apps" || name === "GitHub" ? "link" : "button", { name })).toBeVisible();
+  }
+  await expect(topBar.locator("[data-neurodesk-theme-toggle]")).toBeVisible();
+  await expect(page.getByText("Export area", { exact: true })).toHaveCount(0);
+  await expect(page.locator("#exportMode")).toHaveCount(0);
+  await expect(page.getByText("Browser streamed", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".viewer-badge")).toHaveCount(0);
+  await expect(page.getByText("Only visible chunks are fetched from the source.")).toHaveCount(0);
+  await expect(page.getByText("Volume data stays in this browser tab.")).toHaveCount(0);
+  await expect(page.getByText("Chunk spacing", { exact: true })).toHaveCount(0);
+  await expect(page.locator("#status")).toBeHidden();
+  await expect(page.getByText("Active detail", { exact: true })).toHaveCount(0);
+  await expect(page.locator("#niftiLevel")).toBeDisabled();
+  await expect(page.locator("#niftiEstimate")).toHaveText(
+    "Load a volume to estimate the export.",
+  );
+  await expect(page.locator("#niftiProgress")).toBeHidden();
+  await expect(page.locator("#cancelNifti")).toBeDisabled();
+});
+
+test("page is cross-origin isolated (COOP/COEP active)", async ({ page }) => {
+  await page.goto("/?source=custom");
+  // Threaded ONNX Runtime needs this; asserts _headers (or the COI service worker) worked.
+  const isolated = await page.evaluate(() => self.crossOriginIsolated === true);
+  expect(isolated).toBe(true);
+});
+
+test("a web worker loads and responds", async ({ page }) => {
+  await page.goto("/?source=custom");
+  const ok = await page.evaluate(async () => {
+    // Inline classic worker — mirrors the apps' importScripts worker style.
+    const src = "self.onmessage = () => self.postMessage('pong');";
+    const url = URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
+    const w = new Worker(url);
+    return await new Promise((resolve) => {
+      w.onmessage = (e) => resolve(e.data === "pong");
+      w.onerror = () => resolve(false);
+      w.postMessage("ping");
+    });
+  });
+  expect(ok).toBe(true);
+});
+
+test("large NIfTI export reports progress and can be cancelled", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__niftiWriterAborted = false;
+    window.__niftiWriterWrites = 0;
+    window.showSaveFilePicker = async () => ({
+      createWritable: async () => ({
+        truncate: async () => {},
+        write: async () => {
+          window.__niftiWriterWrites++;
+        },
+        close: async () => {},
+        abort: async () => {
+          window.__niftiWriterAborted = true;
+        },
+      }),
+    });
+  });
+
+  const rootAttributes = {
+    multiscales: [{
+      axes: [
+        { name: "z", unit: "millimeter" },
+        { name: "y", unit: "millimeter" },
+        { name: "x", unit: "millimeter" },
+      ],
+      datasets: [
+        { path: "0", coordinateTransformations: [{ type: "scale", scale: [1, 1, 1] }] },
+        { path: "1", coordinateTransformations: [{ type: "scale", scale: [1, 1024, 1024] }] },
+      ],
+    }],
+  };
+  await page.route("**/large-export/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/.zmetadata")) {
+      await route.fulfill({ status: 404, body: "not consolidated" });
+    } else if (path.endsWith("/.zgroup")) {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ zarr_format: 2 }),
+      });
+    } else if (path.endsWith("/.zattrs") && !/\/\d+\/\.zattrs$/.test(path)) {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(rootAttributes),
+      });
+    } else if (path.endsWith("/0/.zarray")) {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          zarr_format: 2,
+          shape: [1, 8192, 16385],
+          chunks: [1, 128, 128],
+          dtype: "<u2",
+          compressor: null,
+          fill_value: 0,
+          order: "C",
+          filters: null,
+        }),
+      });
+    } else if (path.endsWith("/1/.zarray")) {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          zarr_format: 2,
+          shape: [1, 8, 17],
+          chunks: [1, 8, 17],
+          dtype: "<u2",
+          compressor: null,
+          fill_value: 0,
+          order: "C",
+          filters: null,
+        }),
+      });
+    } else if (/\/\d+\/\.zattrs$/.test(path)) {
+      await route.fulfill({ contentType: "application/json", body: "{}" });
+    } else if (path.endsWith("/1/0.0.0")) {
+      await route.fulfill({
+        contentType: "application/octet-stream",
+        body: Buffer.alloc(1 * 8 * 17 * 2, 1),
+      });
+    } else if (/\/0\/0\.\d+\.\d+$/.test(path)) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      try {
+        await route.fulfill({
+          contentType: "application/octet-stream",
+          body: Buffer.alloc(1 * 128 * 128 * 2, 2),
+        });
+      } catch {
+        // The cancel button intentionally aborts this in-flight request.
+      }
+    } else {
+      await route.fulfill({ status: 404, body: "not found" });
+    }
+  });
+
+  await page.goto("/?source=custom&level=1&zarrLevel=1");
+  await page.getByLabel("OME-Zarr store URL 1").fill(
+    "http://localhost:4173/large-export/store",
+  );
+  await page.getByRole("button", { name: "Load volume" }).click();
+  await expect(page.locator("#activeLevel")).toHaveText("L1", {
+    timeout: 15_000,
+  });
+  await page.locator("#niftiLevel").selectOption("0");
+  expect(Number(await page.locator("#niftiEstimate").getAttribute("data-bytes")))
+    .toBeGreaterThan(256 * 1024 * 1024);
+
+  await page.locator("#downloadNifti").click();
+  await expect(page.locator("#niftiProgress")).toBeVisible();
+  await expect(page.locator("#niftiProgressText")).toContainText(
+    "Fetching tile 1 of",
+  );
+  await expect(page.locator("#cancelNifti")).toBeEnabled();
+  await page.locator("#cancelNifti").click();
+  await expect(page.locator("#downloadStatus")).toHaveText(
+    "Download cancelled",
+  );
+  await expect(page.locator("#niftiProgress")).toBeHidden();
+  await expect(page.locator("#cancelNifti")).toBeDisabled();
+  expect(await page.evaluate(() => window.__niftiWriterAborted)).toBe(true);
+  expect(await page.evaluate(() => window.__niftiWriterWrites)).toBe(1);
+});
+
+test("translated OME-Zarr URLs load as one composite volume", async ({ page }) => {
+  // This exercises the complete translated-mosaic interaction surface. GitHub's
+  // shared runners can take more than a minute even though every request is
+  // locally mocked, so leave enough headroom for the browser assertions.
+  test.setTimeout(600_000);
+  const cancelledChunkErrors = [];
+  page.on("console", (message) => {
+    if (
+      message.type() === "error" &&
+      message.text().includes("chunk upload failed AbortError")
+    ) {
+      cancelledChunkErrors.push(message.text());
+    }
+  });
+  await page.addInitScript(() => {
+    window.__locationChangeCount = 0;
+    const dispatchEvent = EventTarget.prototype.dispatchEvent;
+    EventTarget.prototype.dispatchEvent = function (event) {
+      if (event.type === "locationChange") {
+        window.__locationChangeCount++;
+      }
+      return dispatchEvent.call(this, event);
+    };
+  });
+
+  let leftChunkRequests = 0;
+  let rightChunkRequests = 0;
+  const chunkRequestsByLevel = new Map();
+  let delayLevelOneChunks = false;
+  let delayedLevelOneChunkRequests = 0;
+  let delayDapiMetadata = false;
+  let delayDapiChunks = false;
+  let dapiRootMetadataRequests = 0;
+  let gateDualLayerLod = false;
+  let gatedLodLevel = 1;
+  let gatedDapiLodRequests = 0;
+  const group = JSON.stringify({ zarr_format: 2 });
+  await page.route("**/test-mosaic/**", async (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+    const isDapi = path.includes("/dapi/");
+    const isRight = path.includes("/right/") || isDapi;
+    const rootAttributes = {
+      multiscales: [{
+        axes: [
+          { name: "z", unit: "millimeter" },
+          { name: "y", unit: "millimeter" },
+          { name: "x", unit: "millimeter" },
+        ],
+        datasets: [0, 1, 2, 3].map((level) => ({
+          path: String(level),
+          coordinateTransformations: [
+            { type: "scale", scale: [0.001, 0.001, 0.001].map((value) => value * 2 ** level) },
+            // Deliberately fractional and overlapping at every level.
+            { type: "translation", translation: [0, 0, isRight && !isDapi ? 0.0135 : 0] },
+          ],
+        })),
+      }],
+    };
+    const arrayMetadata = (level) => {
+      const size = 16 / 2 ** level;
+      return {
+        zarr_format: 2,
+        shape: [size, size, size],
+        chunks: [size, size, size],
+        dtype: isDapi ? "<u2" : "|u1",
+        compressor: null,
+        fill_value: 0,
+        order: "C",
+        filters: null,
+      };
+    };
+    if (isDapi && path.endsWith("/.zattrs")) dapiRootMetadataRequests++;
+    if (delayDapiMetadata && isDapi && /\.(?:zattrs|zarray)$/.test(path)) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    if (path.endsWith("/.zmetadata") && !isDapi) {
+      const metadata = {
+        ".zgroup": { zarr_format: 2 },
+        ".zattrs": rootAttributes,
+      };
+      for (let level = 0; level < 4; level++) {
+        metadata[`${level}/.zarray`] = arrayMetadata(level);
+        metadata[`${level}/.zattrs`] = {};
+      }
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ zarr_consolidated_format: 1, metadata }),
+      });
+    } else if (path.endsWith("/.zgroup")) {
+      await route.fulfill({ contentType: "application/json", body: group });
+    } else if (path.endsWith("/.zattrs") && !/\/\d+\/\.zattrs$/.test(path)) {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(rootAttributes),
+      });
+    } else if (/\/\d+\/\.zarray$/.test(path)) {
+      const level = Number(path.match(/\/(\d+)\/\.zarray$/)?.[1] ?? 0);
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(arrayMetadata(level)),
+      });
+    } else if (/\/\d+\/\.zattrs$/.test(path)) {
+      await route.fulfill({ contentType: "application/json", body: "{}" });
+    } else if (/\/\d+\/0\.0\.0$/.test(path)) {
+      const level = Number(path.match(/\/(\d+)\/0\.0\.0$/)?.[1] ?? 0);
+      const size = 16 / 2 ** level;
+      if (delayLevelOneChunks && level === 1) {
+        delayedLevelOneChunkRequests++;
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      }
+      if (delayDapiChunks && isDapi) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      }
+      if (
+        gateDualLayerLod &&
+        level === gatedLodLevel &&
+        isDapi
+      ) {
+        gatedDapiLodRequests++;
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      chunkRequestsByLevel.set(
+        level,
+        (chunkRequestsByLevel.get(level) ?? 0) + 1,
+      );
+      if (isRight) rightChunkRequests++;
+      else leftChunkRequests++;
+      const body = isDapi
+        ? Buffer.from(new Uint16Array(size ** 3).fill(610).buffer)
+        : Buffer.alloc(size ** 3, isRight ? 180 : 60);
+      await route.fulfill({
+        contentType: "application/octet-stream",
+        body,
+      });
+    } else {
+      await route.fulfill({ status: 404, body: "not found" });
+    }
+  });
+
+  await page.goto("/?source=custom&level=0&zarrLevel=0&stats=1&layout=30");
+  await page.getByLabel("OME-Zarr store URL 1").fill("http://localhost:4173/test-mosaic/left");
+  await page.getByRole("button", { name: "Add another URL" }).click();
+  await page.getByLabel("OME-Zarr store URL 2").fill("http://localhost:4173/test-mosaic/right");
+  await page.getByRole("button", { name: "Load volume" }).click();
+
+  await expect(page.locator("#activeLevel")).toHaveAttribute(
+    "data-fov-levels",
+    "0",
+    { timeout: 15_000 },
+  );
+  await expect(page.locator("#activeLevel")).toHaveText("L0");
+  await expect(page.locator("#niftiLevel")).toBeEnabled();
+  await expect(page.locator("#niftiLevel option")).toHaveText([
+    "Current displayed level",
+    "L0 — finest",
+    "L1",
+    "L2",
+    "L3 — overview",
+  ]);
+  await expect(page.locator("#axialSlice")).toHaveAttribute("min", "0");
+  await expect(page.locator("#axialSlice")).toHaveAttribute("max", "15");
+  await expect(page.locator("#axialSliceHelp")).toContainText("current Zarr level");
+  await expect(page.locator("#nv-canvas")).toHaveAttribute(
+    "data-streaming-screen-layout",
+    /^0:/,
+  );
+  const axialTile = await page.locator("#nv-canvas").evaluate((canvas) => {
+    const tile = (canvas.dataset.streamingScreenLayout ?? "")
+      .split(";")
+      .find((entry) => entry.startsWith("0:"));
+    const values = tile?.slice(2).split(",").map(Number) ?? [];
+    return {
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      left: values[0],
+      top: values[1],
+      width: values[2],
+      height: values[3],
+    };
+  });
+  const hoverCanvasBox = await page.locator("#nv-canvas").boundingBox();
+  expect(hoverCanvasBox).not.toBeNull();
+  const cursorX = hoverCanvasBox.x +
+    ((axialTile.left + axialTile.width * 0.75) / axialTile.canvasWidth) * hoverCanvasBox.width;
+  const cursorY = hoverCanvasBox.y +
+    ((axialTile.top + axialTile.height * 0.5) / axialTile.canvasHeight) * hoverCanvasBox.height;
+  await page.locator("#nv-canvas").dispatchEvent("wheel", {
+    clientX: cursorX,
+    clientY: cursorY,
+    deltaY: -120,
+    deltaMode: 0,
+  });
+  await expect(page.locator("#panX")).not.toHaveValue("0");
+  await expect(page.locator("#panY")).toHaveValue("0");
+  await page.locator("#nv-canvas").dispatchEvent("wheel", {
+    clientX: cursorX,
+    clientY: cursorY,
+    deltaY: 120,
+    deltaMode: 0,
+  });
+  await expect(page.locator("#panX")).toHaveValue("0");
+  for (let index = 0; index < 4; index++) {
+    await page.locator("#nv-canvas").dispatchEvent("wheel", {
+      deltaY: -120,
+      deltaMode: 0,
+    });
+  }
+  await page.locator("#axialSlice").fill("4");
+  await expect(page.locator("#axialSliceValue")).toHaveText("5 / 16");
+  await expect(page.locator("#panZ")).not.toHaveValue("0");
+  await page.waitForTimeout(250);
+  await expect.poll(async () => {
+    const path = await page.locator("#crosshairLines").getAttribute("d");
+    return path?.match(/M/g)?.length ?? 0;
+  }).toBe(12);
+  for (let index = 0; index < 4; index++) {
+    await page.locator("#nv-canvas").dispatchEvent("wheel", {
+      deltaY: 120,
+      deltaMode: 0,
+    });
+  }
+  await page.locator("#zoom").fill("0");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.locator("#activeLevel")).toHaveAttribute(
+    "data-fov-levels",
+    "0",
+  );
+  await page.locator("#nv-canvas").focus();
+  await expect(page.locator("#nv-canvas")).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator("#axialSlice")).toHaveValue("5");
+  await expect(page.locator("#axialSliceValue")).toHaveText("6 / 16");
+  await page.locator("#layout").selectOption("1");
+  await expect(page.locator("#axialSlice")).toBeEnabled();
+  await page.locator("#layout").selectOption("2");
+  await expect(page.locator("#axialSlice")).toBeEnabled();
+  await page.locator("#layout").selectOption("33");
+  await expect.poll(async () => page.locator("#nv-canvas").evaluate((canvas) => {
+    const sizes = (canvas.dataset.streamingScreenLayout ?? "")
+      .split(";")
+      .filter(Boolean)
+      .map((tile) => tile.split(":")[1]?.split(",").slice(2).map(Number));
+    const dimensions = sizes.flatMap((size) => size ?? []);
+    return Math.max(...dimensions, 0) - Math.min(...dimensions);
+  })).toBeLessThanOrEqual(1);
+  await expect.poll(async () => page.locator("#nv-canvas").evaluate((canvas) => {
+    const inPlaneSpans = (canvas.dataset.streamingSlabSpans ?? "")
+      .split(";")
+      .filter(Boolean)
+      .flatMap((slab) => slab.split("x").map(Number).filter((span) => span > 0.001));
+    return Math.max(...inPlaneSpans, 0) - Math.min(...inPlaneSpans);
+  })).toBeLessThanOrEqual(0.001);
+  await expect.poll(async () => {
+    const path = await page.locator("#crosshairLines").getAttribute("d");
+    return path?.match(/M/g)?.length ?? 0;
+  }).toBe(12);
+  const verticalCanvasBox = await page.locator("#nv-canvas").boundingBox();
+  expect(verticalCanvasBox).not.toBeNull();
+  const verticalAxialTile = await page.locator("#nv-canvas").evaluate((canvas) => {
+    const tile = (canvas.dataset.streamingScreenLayout ?? "")
+      .split(";")
+      .find((entry) => entry.startsWith("0:"));
+    const values = tile?.slice(2).split(",").map(Number) ?? [];
+    return {
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      left: values[0],
+      top: values[1],
+      width: values[2],
+      height: values[3],
+    };
+  });
+  const verticalCursorX = verticalCanvasBox.x +
+    ((verticalAxialTile.left + verticalAxialTile.width * 0.75) /
+      verticalAxialTile.canvasWidth) * verticalCanvasBox.width;
+  const verticalCursorY = verticalCanvasBox.y +
+    ((verticalAxialTile.top + verticalAxialTile.height * 0.5) /
+      verticalAxialTile.canvasHeight) * verticalCanvasBox.height;
+  for (let index = 0; index < 5; index++) {
+    await page.locator("#nv-canvas").dispatchEvent("wheel", {
+      clientX: verticalCursorX,
+      clientY: verticalCursorY,
+      deltaY: -120,
+      deltaMode: 0,
+    });
+  }
+  await expect.poll(async () => {
+    const path = await page.locator("#crosshairLines").getAttribute("d");
+    return path?.match(/M/g)?.length ?? 0;
+  }).toBe(12);
+  for (let index = 0; index < 5; index++) {
+    await page.locator("#nv-canvas").dispatchEvent("wheel", {
+      clientX: verticalCursorX,
+      clientY: verticalCursorY,
+      deltaY: 120,
+      deltaMode: 0,
+    });
+  }
+  await page.locator("#layout").selectOption("31");
+  await expect(page.locator("#nv-canvas")).toHaveAttribute(
+    "data-crosshair-visible",
+    "1",
+  );
+  await expect(page.locator("#crosshairOverlay")).toBeVisible();
+  await expect(page.locator("#crosshairLines")).toHaveAttribute("d", /^M/);
+  await page.locator("#showCrosshair").uncheck();
+  await expect(page.locator("#crosshairOverlay")).toBeHidden();
+  await page.locator("#showCrosshair").check();
+  await expect(page.locator("#crosshairOverlay")).toBeVisible();
+  expect(await page.locator("#activeLevel").evaluate(
+    (output) => output.scrollWidth <= output.clientWidth,
+  )).toBe(true);
+  await expect(page.locator("#activeLevel")).toHaveAttribute(
+    "title",
+    /Composite of 2 translated stores/,
+  );
+  await expect(page.locator("#fallback")).toHaveAttribute("aria-hidden", "true");
+  await expect(page).toHaveURL(/url=.*test-mosaic%2Fleft.*url=.*test-mosaic%2Fright/);
+  await expect(page.locator("#downloadNifti")).toBeEnabled();
+  await expect.poll(() => leftChunkRequests).toBeGreaterThan(0);
+  await expect.poll(() => rightChunkRequests).toBeGreaterThan(0);
+  await expect.poll(async () => {
+    const details = await page.locator("#hud").innerText();
+    return Number(details.match(/resident\s+(\d+) resident/)?.[1] ?? 0);
+  }).toBeGreaterThan(0);
+  const boundedPlanSize = Number(
+    (await page.locator("#hud").innerText()).match(/requested\s+\d+\s*\/\s*(\d+)/)?.[1] ?? 0,
+  );
+  expect(boundedPlanSize).toBeGreaterThan(0);
+  expect(boundedPlanSize).toBeLessThanOrEqual(1024);
+
+  const fullResolution = await downloadAndVerifyNifti(
+    page,
+    "left-L0-fov.nii",
+  );
+  await expect(page.locator("#downloadStatus")).toHaveText(
+    "Download started: left-L0-fov.nii",
+  );
+
+  await page.locator("#niftiLevel").selectOption("2");
+  await expect(page.locator("#activeLevel")).toHaveText("L0");
+  await expect(page.locator("#niftiEstimate")).toContainText("NIfTI-1");
+  const coarseResolution = await downloadAndVerifyNifti(
+    page,
+    "left-L2-fov.nii",
+  );
+  expect(coarseResolution.estimate.level).toBe(2);
+  expect(coarseResolution.estimate.bytes).toBeLessThan(
+    fullResolution.estimate.bytes,
+  );
+
+  await page.locator("#niftiLevel").selectOption("0");
+  const uncroppedBytes = (await niftiEstimate(page)).bytes;
+  for (let index = 0; index < 4; index++) {
+    await page.locator("#nv-canvas").dispatchEvent("wheel", {
+      deltaY: -120,
+      deltaMode: 0,
+    });
+  }
+  await expect.poll(async () => (await niftiEstimate(page)).bytes).toBeLessThan(
+    uncroppedBytes,
+  );
+  const croppedResolution = await downloadAndVerifyNifti(
+    page,
+    "left-L0-fov.nii",
+  );
+  expect(croppedResolution.estimate.shape).not.toEqual(
+    fullResolution.estimate.shape,
+  );
+  for (let index = 0; index < 4; index++) {
+    await page.locator("#nv-canvas").dispatchEvent("wheel", {
+      deltaY: 120,
+      deltaMode: 0,
+    });
+  }
+  await page.locator("#niftiLevel").selectOption("current");
+
+  const canvasBox = await page.locator("#nv-canvas").boundingBox();
+  expect(canvasBox).not.toBeNull();
+  const interactivePoints = await findInteractiveCanvasPoints(page, canvasBox);
+  const interactivePoint = interactivePoints[0];
+  const startX = interactivePoint.x;
+  const startY = interactivePoint.y;
+  const dragX = startX < canvasBox.x + canvasBox.width * 0.5 ? 40 : -40;
+  const dragY = startY < canvasBox.y + canvasBox.height * 0.5 ? 20 : -20;
+  const panFields = ["#panX", "#panY", "#panZ"];
+  const panBefore = await Promise.all(
+    panFields.map((selector) => page.locator(selector).inputValue()),
+  );
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + dragX, startY + dragY, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => {
+    const panAfter = await Promise.all(
+      panFields.map((selector) => page.locator(selector).inputValue()),
+    );
+    return panAfter.some((value, index) => value !== panBefore[index]);
+  }).toBe(true);
+
+  const panBeforeClick = await Promise.all(
+    panFields.map((selector) => page.locator(selector).inputValue()),
+  );
+  const locationChangesBefore = await page.evaluate(
+    () => window.__locationChangeCount,
+  );
+  await clickKnownCanvasPointUntilLocationChanges(
+    page,
+    interactivePoints,
+    locationChangesBefore,
+  );
+  await expect.poll(async () => Promise.all(
+    panFields.map((selector) => page.locator(selector).inputValue()),
+  )).toEqual(panBeforeClick);
+
+  const chunkRequestsBeforeWindowing = leftChunkRequests + rightChunkRequests;
+  await page.locator("#windowLevel").evaluate((input) => {
+    input.value = "60";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator("#windowWidth").evaluate((input) => {
+    input.value = "20";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator("#windowLevel")).toHaveValue("60");
+  await expect(page.locator("#windowWidth")).toHaveValue("20");
+  expect(leftChunkRequests + rightChunkRequests).toBe(chunkRequestsBeforeWindowing);
+  await expect(page.locator("#windowMin")).toHaveValue("50");
+  await expect(page.locator("#windowMax")).toHaveValue("70");
+  await expect(page.locator("#nv-canvas")).toHaveAttribute("data-window-min", "50");
+  await expect(page.locator("#nv-canvas")).toHaveAttribute("data-window-max", "70");
+
+  await page.locator("#windowLevel").evaluate((input) => {
+    input.value = "10";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator("#windowWidth").evaluate((input) => {
+    input.value = "100";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator("#windowMin")).toHaveValue("-40");
+  await expect(page.locator("#windowMax")).toHaveValue("60");
+
+  await page.locator("#windowLevel").evaluate((input) => {
+    input.value = "60";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator("#windowWidth").evaluate((input) => {
+    input.value = "20";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator("#windowRangeValue")).toHaveText("50–70");
+
+  await page.locator("#windowMin").fill("40");
+  await page.locator("#windowMax").fill("100");
+  await expect(page.locator("#windowLevel")).toHaveValue("70");
+  await expect(page.locator("#windowWidth")).toHaveValue("60");
+
+  await page.locator("#windowLevel").evaluate((input) => {
+    input.value = "60";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.locator("#windowWidth").evaluate((input) => {
+    input.value = "20";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator("#windowMin")).toHaveValue("50");
+  await expect(page.locator("#windowMax")).toHaveValue("70");
+
+  const measureButton = page.getByRole("button", { name: "Measure distance" });
+  await expect(measureButton).toHaveAttribute("aria-pressed", "false");
+  await measureButton.click();
+  await expect(measureButton).toHaveAttribute("aria-pressed", "true");
+  const measureEndX = startX + dragX * 0.8;
+  const measureEndY = startY + dragY * 0.8;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(measureEndX, measureEndY, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator("#measurementStatus")).toContainText("µm");
+  await expect(page.locator("#measurementStatus")).toContainText("right-click to remove");
+  await page.mouse.click(
+    (startX + measureEndX) * 0.5,
+    (startY + measureEndY) * 0.5,
+    { button: "right" },
+  );
+  await expect(page.locator("#clearMeasurements")).toBeDisabled();
+  await expect(page.locator("#measurementStatus")).toHaveText("drag across a structure");
+  await measureButton.click();
+  await expect(measureButton).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#measurementStatus")).toHaveText("crosshair movement active");
+  const locationChangesAfterMeasurement = await page.evaluate(
+    () => window.__locationChangeCount,
+  );
+  await clickKnownCanvasPointUntilLocationChanges(
+    page,
+    interactivePoints,
+    locationChangesAfterMeasurement,
+  );
+
+  await page.getByText("Advanced", { exact: true }).click();
+  await expect(page.getByLabel("Stream details")).toBeVisible();
+  await page.locator("#scrollZoomSpeed").fill("3");
+  await expect(page.locator("#scrollZoomSpeedValue")).toHaveText("3×");
+  await page.locator("#detailBudget").fill("8");
+  await expect(page.locator("#detailBudgetValue")).toHaveText("8 GiB");
+  await expect(page).toHaveURL(/detailBudget=8/);
+  await page.locator("#zoom").fill("2");
+  await expect(page.locator("#zoomValue")).toHaveText("L2 · pending");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.locator("#zoomValue")).toHaveText("L2");
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-fov-levels", "2");
+  await page.locator("#showScaleBar").uncheck();
+  await expect(page.locator("#visibleLevel")).toBeHidden();
+  await expect(page.locator("#scaleIndicators")).toBeHidden();
+  await page.locator("#showScaleBar").check();
+  await expect(page.locator("#visibleLevel")).toBeVisible();
+  await expect(page.locator("#tileLoading")).toBeVisible();
+  await expect(page.locator("#tileLoading")).toHaveAttribute("data-loading", /\d+/);
+  await expect(page.locator("#nv-canvas")).toHaveAttribute(
+    "data-crosshair-width",
+    "2",
+  );
+  await expect(page.locator("#nv-canvas")).toHaveAttribute(
+    "data-crosshair-gap",
+    "8",
+  );
+  const sharedPan = await Promise.all(
+    panFields.map((selector) => page.locator(selector).inputValue()),
+  );
+  const sharedUrl = await createShareUrl(page);
+  const sharedParams = await decodedShareParams(sharedUrl);
+  expect(sharedParams.getAll("url")).toHaveLength(2);
+  expect(sharedParams.get("layout")).toBe("31");
+  expect(sharedParams.get("zoom")).toBe("2");
+  expect(sharedParams.get("wl")).toBe("60");
+  expect(sharedParams.get("ww")).toBe("20");
+  expect(sharedParams.get("scrollZoomSpeed")).toBe("3");
+  expect(sharedParams.get("detailBudget")).toBe("8");
+  expect(sharedParams.get("pan")).toBeTruthy();
+  expect(sharedParams.get("crosshair")).toBeTruthy();
+
+  await page.goto(sharedUrl);
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-fov-levels", "2");
+  await expect(page.locator("#windowLevel")).toHaveValue("60");
+  await expect(page.locator("#windowWidth")).toHaveValue("20");
+  await expect(page.locator("#scrollZoomSpeed")).toHaveValue("3");
+  await expect(page.locator("#detailBudget")).toHaveValue("8");
+  await expect(page.locator("#zoom")).toHaveValue("2");
+  await expect.poll(async () => {
+    const restoredPan = await Promise.all(
+      panFields.map((selector) => page.locator(selector).inputValue()),
+    );
+    return Math.max(
+      ...restoredPan.map((value, index) =>
+        Math.abs(Number(value) - Number(sharedPan[index]))
+      ),
+    );
+  }).toBeLessThanOrEqual(1);
+
+  await expect(page.locator("#zoomValue")).toHaveText("L2");
+  delayLevelOneChunks = true;
+  await page.locator("#zoom").fill("1");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-requested-level", "1");
+  await expect.poll(() => delayedLevelOneChunkRequests).toBeGreaterThan(0);
+  await expect.poll(async () => Number(
+    await page.locator("#tileLoading").getAttribute("data-loading"),
+  )).toBeGreaterThan(0);
+
+  // Start a newer LOD request while L1 chunks are still delayed. The latest
+  // plan must win, and a crosshair click made during the swap must survive.
+  await page.locator("#zoom").fill("0");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-requested-level", "0");
+  const locationChangesBeforeReloadClick = await page.evaluate(
+    () => window.__locationChangeCount,
+  );
+  await clickKnownCanvasPointUntilLocationChanges(
+    page,
+    interactivePoints,
+    locationChangesBeforeReloadClick,
+  );
+  const clickedCrosshair = (await decodedShareParams(
+    await createShareUrl(page),
+  )).get("crosshair");
+
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-requested-level", "0");
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-delivered-level", "0");
+  await page.waitForTimeout(900);
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-fov-levels", "0");
+  expect(cancelledChunkErrors).toEqual([]);
+  await expect(page.locator("#visibleLevel")).toHaveText("L0");
+  await page.getByText("Advanced", { exact: true }).click();
+  await page.getByLabel("Stream details").check();
+  await expect(page.locator("#hud")).toContainText("30 x 16 x 16 uint8");
+  expect(chunkRequestsByLevel.get(0)).toBeGreaterThan(0);
+  const settledCrosshair = (await decodedShareParams(
+    await createShareUrl(page),
+  )).get("crosshair");
+  expect(settledCrosshair).toBe(clickedCrosshair);
+
+  await page.getByRole("button", { name: "Remove OME-Zarr store 2" }).click();
+  await expect(page.getByLabel("OME-Zarr store URL 2")).toHaveCount(0);
+  await expect(page).not.toHaveURL(/test-mosaic%2Fright/);
+  await expect(page).toHaveURL(/test-mosaic%2Fleft/);
+  await expect(page.locator("#activeLevel")).not.toContainText("2 translated stores");
+
+  await page.getByRole("button", { name: "New stain layer" }).click();
+  await page.getByLabel("Stain name").fill("DAPI");
+  await page.getByLabel("OME-Zarr store URL 1").fill("http://localhost:4173/test-mosaic/dapi");
+  await page.getByRole("button", { name: "Load volume" }).click();
+  await expect(page.getByRole("button", { name: "Show DAPI stain layer" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Show left stain layer" })).toHaveAttribute("aria-pressed", "false");
+  await expect(page).toHaveURL(/test-mosaic%2Fdapi/);
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-requested-level", "0");
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-delivered-level", "0");
+  await expect.poll(async () => (
+    (await page.locator("#nv-canvas").getAttribute("data-loaded-stain-layers"))
+      ?.split(",").filter(Boolean).length ?? 0
+  ), { timeout: 30_000 }).toBe(2);
+  const dapiLayerId = new URL(page.url()).searchParams.get("activeLayer");
+  await expect(page.locator("#nv-canvas")).toHaveAttribute(
+    "data-niivue-base-stain-layer",
+    dapiLayerId,
+  );
+  await expect(page.locator("#nv-canvas")).toHaveAttribute(
+    "data-niivue-volume-opacities",
+    "1,0",
+  );
+  await expect(page.locator("#tileLoading")).toHaveAttribute(
+    "data-loading",
+    "0",
+    { timeout: 30_000 },
+  );
+  await expect(page.locator("#niftiEstimate")).toContainText("DAPI");
+  const dapiExport = await downloadAndVerifyNifti(
+    page,
+    "DAPI-L0-fov.nii",
+  );
+  expect(dapiExport.estimate.bytes).toBe(
+    352 + dapiExport.estimate.shape.reduce((size, axis) => size * axis, 2),
+  );
+  await expect(page.getByLabel(/Window level/)).toHaveValue("305");
+  await expect(page.getByLabel(/Window width/)).toHaveValue("610");
+  await expect(page.locator("#nv-canvas")).toHaveAttribute("data-window-min", "0");
+  await expect(page.locator("#nv-canvas")).toHaveAttribute("data-window-max", "610");
+  const dapiBeforeAutoContrast = await page.locator("#nv-canvas").screenshot();
+  await page.getByRole("button", { name: "Auto contrast" }).click();
+  await expect(page.locator("#nv-canvas")).toHaveAttribute("data-window-min", "0");
+  await expect(page.locator("#nv-canvas")).toHaveAttribute("data-window-max", "610");
+  const dapiAfterAutoContrast = await page.locator("#nv-canvas").screenshot();
+  expect(dapiAfterAutoContrast.equals(dapiBeforeAutoContrast)).toBe(true);
+  const requestsBeforeCachedSwitch = {
+    left: leftChunkRequests,
+    right: rightChunkRequests,
+  };
+
+  await page.getByRole("button", { name: "Show left stain layer" }).click();
+  await expect(page.getByRole("button", { name: "Show left stain layer" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Show DAPI stain layer" })).toHaveAttribute("aria-pressed", "false");
+  await expect(page).toHaveURL(/test-mosaic%2Fleft/);
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-fov-levels", "0");
+  await page.waitForTimeout(400);
+  expect(leftChunkRequests).toBe(requestsBeforeCachedSwitch.left);
+  expect(rightChunkRequests).toBe(requestsBeforeCachedSwitch.right);
+  await page.getByLabel(/Window level/).fill("100");
+  await page.getByLabel(/Window width/).fill("20");
+  const leftAutoContrast = page.getByRole("button", { name: "Auto contrast" });
+  await expect(leftAutoContrast).toBeEnabled();
+  await leftAutoContrast.click();
+  await expect(page.getByLabel(/Window level/)).toHaveValue("30");
+  await expect(page.getByLabel(/Window width/)).toHaveValue("60");
+  await expect(page.locator("#nv-canvas")).toHaveAttribute("data-window-min", "0");
+  await expect(page.locator("#nv-canvas")).toHaveAttribute("data-window-max", "60");
+  await expect(page.getByLabel(/opacity/i)).toHaveCount(0);
+  const layeredShareUrl = await createShareUrl(page);
+  const layeredShareParams = await decodedShareParams(layeredShareUrl);
+  expect(layeredShareParams.get("crosshair")).toBe(clickedCrosshair);
+  const sharedLayers = JSON.parse(layeredShareParams.get("layers"));
+  expect(sharedLayers.every((layer) => !("opacity" in layer))).toBe(true);
+  delayDapiMetadata = true;
+  await page.goto(layeredShareUrl);
+  await expect(page.getByRole("button", { name: "Show left stain layer" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Show DAPI stain layer" })).toBeVisible();
+  await expect.poll(async () => (
+    (await page.locator("#nv-canvas").getAttribute("data-loaded-stain-layers"))
+      ?.split(",").filter(Boolean).length ?? 0
+  )).toBe(1);
+  const dapiRequestsBeforeSwitch = dapiRootMetadataRequests;
+  delayDapiChunks = true;
+  await page.getByRole("button", { name: "Show DAPI stain layer" }).click();
+  await expect(page.getByRole("button", { name: "Show left stain layer" })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("button", { name: "Show DAPI stain layer" })).toHaveAttribute("aria-pressed", "true");
+  expect(new URL(page.url()).searchParams.get("activeLayer")).toBe(dapiLayerId);
+  await expect.poll(async () => (
+    (await page.locator("#nv-canvas").getAttribute("data-loaded-stain-layers"))
+      ?.split(",").filter(Boolean).length ?? 0
+  ), { timeout: 30_000 }).toBe(2);
+  await expect(page.locator("#nv-canvas")).toHaveAttribute(
+    "data-niivue-volume-opacities",
+    "1,0",
+  );
+  await expect(page.locator("#tileLoading")).toHaveAttribute(
+    "data-loading",
+    "0",
+    { timeout: 30_000 },
+  );
+  expect(dapiRootMetadataRequests - dapiRequestsBeforeSwitch).toBe(5);
+  await expect(page.getByLabel(/Window level/)).toHaveValue("305");
+  await expect(page.getByLabel(/Window width/)).toHaveValue("610");
+  await expect(page.locator("#nv-canvas")).toHaveAttribute("data-window-min", "0");
+  await expect(page.locator("#nv-canvas")).toHaveAttribute("data-window-max", "610");
+  const restoredDapiBeforeAutoContrast = await page.locator("#nv-canvas").screenshot();
+  await page.getByRole("button", { name: "Auto contrast" }).click();
+  await expect(page.locator("#nv-canvas")).toHaveAttribute("data-window-min", "0");
+  await expect(page.locator("#nv-canvas")).toHaveAttribute("data-window-max", "610");
+  const restoredDapiAfterAutoContrast = await page.locator("#nv-canvas").screenshot();
+  expect(restoredDapiAfterAutoContrast.equals(restoredDapiBeforeAutoContrast)).toBe(true);
+  await expect(page.getByLabel(/opacity/i)).toHaveCount(0);
+
+  // Exercise the same equal-slices layout used by the live DANDI report.
+  await page.locator("#layout").selectOption("30");
+  await expect(page.locator("#tileLoading")).toHaveAttribute("data-loading", "0");
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-delivered-level", "0");
+
+  gateDualLayerLod = true;
+  gatedLodLevel = 2;
+  gatedDapiLodRequests = 0;
+  await page.locator("#showStats").evaluate((input) => {
+    input.checked = false;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  const dapiWindowBeforeLodSwap = await Promise.all([
+    page.getByLabel(/Window level/).inputValue(),
+    page.getByLabel(/Window width/).inputValue(),
+  ]);
+  await page.getByLabel("Zoom level").fill("2");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect.poll(() => gatedDapiLodRequests).toBeGreaterThan(0);
+  const dapiDuringLodSwap = await page.locator("#nv-canvas").screenshot();
+  await expect(page.getByLabel(/Window level/)).toHaveValue(dapiWindowBeforeLodSwap[0]);
+  await expect(page.getByLabel(/Window width/)).toHaveValue(dapiWindowBeforeLodSwap[1]);
+  await expect(page.locator("#activeLevel")).toHaveAttribute(
+    "data-requested-level",
+    "2",
+    { timeout: 30_000 },
+  );
+  await expect(page.locator("#activeLevel")).toHaveAttribute(
+    "data-delivered-level",
+    "2",
+    { timeout: 30_000 },
+  );
+  await expect(page.locator("#tileLoading")).toHaveAttribute(
+    "data-loading",
+    "0",
+    { timeout: 30_000 },
+  );
+  await expect.poll(async () => Number(
+    await page.locator("#nv-canvas").getAttribute("data-stream-resident"),
+  )).toBeGreaterThan(0);
+  const dapiAfterLodSwap = await page.locator("#nv-canvas").screenshot();
+  expect(dapiDuringLodSwap.equals(dapiAfterLodSwap)).toBe(true);
+
+  // Supersede a delayed multi-stain swap. The controllers share one NiiVue
+  // upload pump, so the newer request must wait for the current swap and then
+  // become the final delivered plan instead of leaving the pump idle/stale.
+  gateDualLayerLod = true;
+  gatedLodLevel = 3;
+  gatedDapiLodRequests = 0;
+  await page.getByLabel("Zoom level").fill("3");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect.poll(() => gatedDapiLodRequests).toBeGreaterThan(0);
+  await page.getByLabel("Zoom level").fill("1");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.locator("#activeLevel")).toHaveAttribute(
+    "data-requested-level",
+    "1",
+    { timeout: 30_000 },
+  );
+  await expect(page.locator("#activeLevel")).toHaveAttribute(
+    "data-delivered-level",
+    "1",
+    { timeout: 30_000 },
+  );
+  await expect(page.locator("#activeLevel")).toHaveAttribute(
+    "data-fov-levels",
+    "1",
+    { timeout: 30_000 },
+  );
+  await expect(page.locator("#tileLoading")).toHaveAttribute(
+    "data-loading",
+    "0",
+    { timeout: 30_000 },
+  );
+  await expect(page.locator("#nv-canvas")).toHaveAttribute(
+    "data-stream-pending",
+    "0",
+  );
+  await expect(page.locator("#nv-canvas")).toHaveAttribute(
+    "data-stream-in-flight",
+    "0",
+  );
+});
+
+test("DANDI assets are grouped by stain and selectable as a chunk set", async ({ page }) => {
+  const zarrIds = [
+    "56509720-870c-4f43-ae41-7b75f9590722",
+    "b2802fac-cb30-4c25-bd16-09666706c91a",
+    "e8633ce6-0922-4de1-a453-8ffbed48f1d2",
+    "27ad3056-c777-43ec-92be-c8438fc19941",
+    "d2babd63-9274-4c92-85be-e2b4fca6d28f",
+    "bcb68179-4c76-422d-b292-7e2a214b27ad",
+  ];
+  let requestedGlob = "";
+  await page.route("https://api.dandiarchive.org/api/dandisets/000108/versions/draft/assets/**", async (route) => {
+    requestedGlob = new URL(route.request().url()).searchParams.get("glob") ?? "";
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        count: 6,
+        next: null,
+        previous: null,
+        results: [10, 2, 1, 6, 5, 4].map((chunk, index) => ({
+          asset_id: `asset-${chunk}`,
+          path: `sub-MITU01/ses-test/micr/sub-MITU01_ses-test_sample-127_stain-LEC_run-1_chunk-${chunk}_SPIM.ome.zarr`,
+          size: 37_700_000_000,
+          zarr: zarrIds[index],
+        })),
+      }),
+    });
+  });
+
+  await page.goto("/?source=dandi");
+  await expect(page.locator("#dandiArchiveControl")).toBeVisible();
+  await expect(page.locator("#zarrUrlControl")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Clear all layers" })).toBeDisabled();
+  const clearButtonBox = await page.getByRole("button", { name: "Clear all layers" }).boundingBox();
+  const loadButtonBox = await page.getByRole("button", { name: "Load volume" }).boundingBox();
+  expect(clearButtonBox).not.toBeNull();
+  expect(loadButtonBox).not.toBeNull();
+  expect(Math.abs(loadButtonBox.y - clearButtonBox.y)).toBeLessThan(2);
+  await page.locator("#dandiQuery").fill("sample-127 LEC");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.locator("#dandiSearchStatus")).toContainText("Showing 6 OME-Zarr stores in 1 stain group");
+  expect(requestedGlob).toBe("*sample-127*LEC*.ome.zarr");
+  await expect(page.getByText("Subject MITU01", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sample 127", { exact: true })).toBeVisible();
+  await expect(page.locator(".dandi-stain-group")).toContainText("LEC");
+  await page.getByText("Review 6 chunks", { exact: true }).click();
+  await expect(page.locator(".dandi-result strong")).toHaveText([
+    "Chunk 1",
+    "Chunk 2",
+    "Chunk 4",
+    "Chunk 5",
+    "Chunk 6",
+    "Chunk 10",
+  ]);
+  await expect(page.getByRole("button", { name: "Add selected stores" })).toHaveCount(0);
+  await expect(page.locator(".dandi-add-store")).toHaveCount(6);
+  await page.getByRole("button", { name: "Add Chunk 1 store" }).click();
+  await expect(page.locator("#dandiSelectedStores .selected-store-row")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Add Chunk 1 store" })).toBeDisabled();
+  await page.getByRole("button", { name: "Add Chunk 2 store" }).click();
+  await page.getByRole("button", { name: "Add Chunk 4 store" }).click();
+  await expect(page.locator("#dandiSelectedStores .selected-store-row")).toHaveCount(3);
+  await expect.poll(async () => page.locator(".selected-store-scroll").evaluate(
+    (list) => list.scrollHeight <= list.clientHeight,
+  )).toBe(true);
+  await page.getByRole("button", { name: "Add all 6 LEC chunks from sample 127" }).click();
+  await expect(page.locator("#source")).toHaveValue("dandi");
+  await expect(page.locator("#dandiSelectedStores .selected-store-row")).toHaveCount(6);
+  await expect.poll(async () => page.locator(".selected-store-scroll").evaluate(
+    (list) => list.scrollHeight > list.clientHeight,
+  )).toBe(true);
+  const selectedListBox = await page.locator("#dandiSelectedStores").boundingBox();
+  expect(selectedListBox).not.toBeNull();
+  expect(loadButtonBox.y + loadButtonBox.height).toBeLessThanOrEqual(selectedListBox.y);
+  expect(clearButtonBox.y + clearButtonBox.height).toBeLessThanOrEqual(selectedListBox.y);
+  await expect(page.locator("#dandiSelectedStores")).toContainText("chunk-1_SPIM.ome.zarr");
+  await expect(page.getByRole("button", { name: "Clear all layers" })).toBeEnabled();
+  await expect(page).toHaveURL(new RegExp(`url=.*${zarrIds[0]}`));
+  await expect(page).toHaveURL(/source=dandi/);
+  await page.getByRole("button", { name: "Clear all layers" }).click();
+  await expect(page.locator("#dandiSelectedStores")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Clear all layers" })).toBeDisabled();
+  await expect(page.locator("#dandiSearchStatus")).toHaveText("All stain layers cleared.");
+  await expect(page).not.toHaveURL(new RegExp(`url=.*${zarrIds[0]}`));
+});
+
+test("generic uint16 share contrast is replaced from streamed signal", async ({ page }) => {
+  const group = JSON.stringify({ zarr_format: 2 });
+  const values = Buffer.alloc(32 * 32 * 32 * 2);
+  for (let index = 64; index < 32 * 32 * 32; index++) {
+    values.writeUInt16LE(500 + ((index * 37) % 6001), index * 2);
+  }
+  await page.route("**/test-auto-window/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/.zgroup")) {
+      await route.fulfill({ contentType: "application/json", body: group });
+    } else if (path.endsWith("/.zattrs") && !path.endsWith("/0/.zattrs")) {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          multiscales: [{
+            axes: [
+              { name: "z", unit: "millimeter" },
+              { name: "y", unit: "millimeter" },
+              { name: "x", unit: "millimeter" },
+            ],
+            datasets: [{
+              path: "0",
+              coordinateTransformations: [{
+                type: "scale",
+                scale: [0.001, 0.001, 0.001],
+              }],
+            }],
+          }],
+        }),
+      });
+    } else if (path.endsWith("/0/.zarray")) {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          zarr_format: 2,
+          shape: [32, 32, 32],
+          chunks: [32, 32, 32],
+          dtype: "<u2",
+          compressor: null,
+          fill_value: 0,
+          order: "C",
+          filters: null,
+        }),
+      });
+    } else if (path.endsWith("/0/.zattrs")) {
+      await route.fulfill({ contentType: "application/json", body: "{}" });
+    } else if (path.endsWith("/0/0.0.0")) {
+      await route.fulfill({
+        contentType: "application/octet-stream",
+        body: values,
+      });
+    } else {
+      await route.fulfill({ status: 404, body: "not found" });
+    }
+  });
+
+  const storeUrl = encodeURIComponent("http://localhost:4173/test-auto-window/store");
+  await page.goto(
+    `/?source=custom&level=0&url=${storeUrl}&wl=32768&ww=65535`,
+  );
+
+  await expect(page.locator("#layout")).toHaveValue("34");
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-fov-levels", "0", {
+    timeout: 15_000,
+  });
+  await expect(page.locator("#nvslideView")).toBeVisible();
+  await expect(page.locator(".nvslide-canvas")).toHaveCount(3);
+  await expect(page.locator(".nvslide-pane-label")).toHaveCount(0);
+  await expect(page.locator(".nvslide-scale-bar")).toHaveCount(3);
+  await expect(page.locator(".nvslide-scale-bar").first()).toBeVisible();
+  await page.locator("#showScaleBar").uncheck();
+  await expect(page.locator(".nvslide-scale-bar:visible")).toHaveCount(0);
+  await page.locator("#showScaleBar").evaluate((checkbox) => {
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await expect(page.locator(".nvslide-scale-bar").first()).toBeVisible();
+  const nvSlideMeasureButton = page.getByRole("button", { name: "Measure distance" });
+  await expect(nvSlideMeasureButton).toBeEnabled();
+  await nvSlideMeasureButton.click();
+  await expect(nvSlideMeasureButton).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#measurementStatus")).toHaveText("drag across a structure");
+  const measurementCanvas = page.locator('[data-plane="axial"] canvas');
+  const measurementBox = await measurementCanvas.boundingBox();
+  expect(measurementBox).not.toBeNull();
+  const measurementStart = {
+    x: measurementBox.x + measurementBox.width * 0.4,
+    y: measurementBox.y + measurementBox.height * 0.4,
+  };
+  const measurementEnd = {
+    x: measurementBox.x + measurementBox.width * 0.6,
+    y: measurementBox.y + measurementBox.height * 0.6,
+  };
+  await page.mouse.move(measurementStart.x, measurementStart.y);
+  await page.mouse.down();
+  await page.mouse.move(measurementEnd.x, measurementEnd.y, { steps: 8 });
+  await expect(page.locator(
+    ".nvslide-measurement-line.nvslide-measurement-draft",
+  )).toHaveCount(1);
+  await page.mouse.up();
+  await expect(page.locator("#measurementStatus")).toContainText("µm");
+  await expect(page.locator(".nvslide-measurement-line")).toHaveCount(1);
+  await expect(page.locator("#clearMeasurements")).toBeEnabled();
+  await page.mouse.click(
+    (measurementStart.x + measurementEnd.x) / 2,
+    (measurementStart.y + measurementEnd.y) / 2,
+    { button: "right" },
+  );
+  await expect(page.locator(".nvslide-measurement-line")).toHaveCount(0);
+  await expect(page.locator("#clearMeasurements")).toBeDisabled();
+  await page.mouse.move(measurementStart.x, measurementStart.y);
+  await page.mouse.down();
+  await page.mouse.move(measurementEnd.x, measurementEnd.y, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.locator(".nvslide-measurement-line")).toHaveCount(1);
+  await page.locator("#clearMeasurements").click();
+  await expect(page.locator(".nvslide-measurement-line")).toHaveCount(0);
+  await expect(page.locator("#clearMeasurements")).toBeDisabled();
+  await nvSlideMeasureButton.click();
+  await expect(nvSlideMeasureButton).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#measurementStatus")).toHaveText("crosshair movement active");
+  await expect(page.locator(".nvslide-pane-loading")).toHaveCount(3);
+  await expect(page.locator("#nv-canvas")).toHaveAttribute("aria-hidden", "true");
+  await expect.poll(async () => Number(await page.locator("#windowWidth").inputValue()))
+    .toBeLessThan(10_000);
+  await expect.poll(async () => Number(await page.locator("#windowLevel").inputValue()))
+    .toBeLessThan(5_000);
+  await expect.poll(async () => {
+    const canvas = page.locator("#nv-canvas");
+    const min = await canvas.getAttribute("data-window-min");
+    const max = await canvas.getAttribute("data-window-max");
+    if (min === null || max === null) return false;
+    return await page.locator(".nvslide-pane").evaluateAll(
+      (panes, window) => panes.every((pane) => pane.dataset.window === window),
+      `${min}:${max}`,
+    );
+  }).toBe(true);
+  await expect(page.locator("#fallback")).toHaveAttribute("aria-hidden", "true");
+
+  const initialExport = await niftiEstimate(page);
+  expect(initialExport.shape).toEqual([32, 32, 32]);
+  const axialCanvas = page.locator('[data-plane="axial"] canvas');
+  const axialScaleBefore = await page.locator('[data-plane="axial"] .nvslide-scale-bar')
+    .evaluate((bar) => ({ width: bar.firstElementChild?.style.width, text: bar.textContent }));
+  const sagittalScaleBefore = await page.locator('[data-plane="sagittal"] .nvslide-scale-bar')
+    .evaluate((bar) => ({ width: bar.firstElementChild?.style.width, text: bar.textContent }));
+  const axialBox = await axialCanvas.boundingBox();
+  expect(axialBox).not.toBeNull();
+  await page.mouse.move(
+    axialBox.x + axialBox.width / 2,
+    axialBox.y + axialBox.height / 2,
+  );
+  await page.mouse.wheel(0, -700);
+  await expect(page.locator('[data-plane="axial"]')).toHaveAttribute("data-active", "true");
+  await expect.poll(async () => (await niftiEstimate(page)).shape)
+    .not.toEqual(initialExport.shape);
+  const zoomedExport = await niftiEstimate(page);
+  expect(zoomedExport.shape.every((size, axis) => size < initialExport.shape[axis]))
+    .toBe(true);
+  const axialScaleAfter = await page.locator('[data-plane="axial"] .nvslide-scale-bar')
+    .evaluate((bar) => ({ width: bar.firstElementChild?.style.width, text: bar.textContent }));
+  const sagittalScaleAfter = await page.locator('[data-plane="sagittal"] .nvslide-scale-bar')
+    .evaluate((bar) => ({ width: bar.firstElementChild?.style.width, text: bar.textContent }));
+  expect(axialScaleAfter).not.toEqual(axialScaleBefore);
+  expect(sagittalScaleAfter).toEqual(sagittalScaleBefore);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator("#downloadNifti").click();
+  const download = await downloadPromise;
+  const downloadedHeader = parseNiftiHeader(await readDownload(download));
+  expect(downloadedHeader.shape).toEqual(zoomedExport.shape);
+  await expect(page.locator("#niftiProgress")).toBeHidden();
+
+  for (const plane of ["sagittal", "coronal"]) {
+    const canvas = page.locator(`[data-plane="${plane}"] canvas`);
+    const box = await canvas.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, -700);
+  }
+  const paneScalesBeforeCrosshairChange = await page
+    .locator(".nvslide-pane")
+    .evaluateAll((panes) => panes.map((pane) => {
+      const bar = pane.querySelector(".nvslide-scale-bar");
+      return {
+        plane: pane.dataset.plane,
+        width: bar?.firstElementChild?.style.width,
+        text: bar?.textContent,
+      };
+    }));
+  const recenterBox = await axialCanvas.boundingBox();
+  expect(recenterBox).not.toBeNull();
+  await axialCanvas.click({
+    position: {
+      x: recenterBox.width * 0.7,
+      y: recenterBox.height * 0.3,
+    },
+  });
+  await expect.poll(async () => page.locator(".nvslide-pane").evaluateAll((panes) =>
+    panes.every((pane) => {
+      const canvas = pane.querySelector("canvas");
+      const crosshair = pane.querySelector(".nvslide-crosshair");
+      if (!(canvas instanceof HTMLCanvasElement) || !(crosshair instanceof HTMLElement)) {
+        return false;
+      }
+      const style = getComputedStyle(crosshair);
+      const x = Number.parseFloat(style.getPropertyValue("--crosshair-x"));
+      const y = Number.parseFloat(style.getPropertyValue("--crosshair-y"));
+      return Math.abs(x - canvas.clientWidth / 2) < 2
+        && Math.abs(y - canvas.clientHeight / 2) < 2;
+    }),
+  )).toBe(true);
+  const paneScalesAfterCrosshairChange = await page
+    .locator(".nvslide-pane")
+    .evaluateAll((panes) => panes.map((pane) => {
+      const bar = pane.querySelector(".nvslide-scale-bar");
+      return {
+        plane: pane.dataset.plane,
+        width: bar?.firstElementChild?.style.width,
+        text: bar?.textContent,
+      };
+    }));
+  expect(paneScalesAfterCrosshairChange).toEqual(paneScalesBeforeCrosshairChange);
+
+  const axialSliceBefore = await page.locator('[data-plane="axial"]').getAttribute("data-slice");
+  await page.locator('[data-plane="sagittal"] canvas').click({ position: { x: 12, y: 12 } });
+  await expect.poll(async () =>
+    page.locator('[data-plane="axial"]').getAttribute("data-slice")
+  ).not.toBe(axialSliceBefore);
+
+  await page.locator("#layout").selectOption("30");
+  await expect(page.locator("#nvslideView")).toBeHidden();
+  await expect(page.locator("#nv-canvas")).toHaveAttribute("aria-hidden", "false");
+  await page.locator("#layout").selectOption("34");
+  await expect(page.locator("#nvslideView")).toBeVisible();
+  await expect.poll(async () =>
+    page.locator('[data-plane="axial"]').getAttribute("data-level")
+  ).toBe("0");
+
+  await page.goto(
+    `/?source=custom&level=0&url=${storeUrl}&wl=1000&ww=500&layout=34`,
+  );
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-fov-levels", "0");
+  await page.waitForTimeout(500);
+  await expect(page.locator("#windowLevel")).toHaveValue("1000");
+  await expect(page.locator("#windowWidth")).toHaveValue("500");
+
+  const canvasBeforeAutoContrast = await page
+    .locator('[data-plane="axial"] canvas')
+    .screenshot();
+  const autoContrast = page.getByRole("button", { name: "Auto contrast" });
+  await expect(autoContrast).toBeEnabled();
+  await autoContrast.click();
+  await expect.poll(async () => Number(await page.locator("#windowWidth").inputValue()))
+    .toBeLessThan(10_000);
+  await expect.poll(async () => Number(await page.locator("#windowLevel").inputValue()))
+    .toBeGreaterThan(2_000);
+  await expect.poll(async () => {
+    const canvas = page.locator("#nv-canvas");
+    const min = await canvas.getAttribute("data-window-min");
+    const max = await canvas.getAttribute("data-window-max");
+    if (min === null || max === null) return false;
+    return await page.locator(".nvslide-pane").evaluateAll(
+      (panes, window) => panes.every((pane) => pane.dataset.window === window),
+      `${min}:${max}`,
+    );
+  }).toBe(true);
+  await expect.poll(async () => {
+    const canvasAfterAutoContrast = await page
+      .locator('[data-plane="axial"] canvas')
+      .screenshot();
+    return canvasAfterAutoContrast.equals(canvasBeforeAutoContrast);
+  }).toBe(false);
+
+  const stainSwitchCanvas = page.locator('[data-plane="axial"] canvas');
+  const stainSwitchBox = await stainSwitchCanvas.boundingBox();
+  expect(stainSwitchBox).not.toBeNull();
+  await page.mouse.move(
+    stainSwitchBox.x + stainSwitchBox.width / 2,
+    stainSwitchBox.y + stainSwitchBox.height / 2,
+  );
+  await page.mouse.wheel(0, -700);
+  await page.mouse.move(
+    stainSwitchBox.x + stainSwitchBox.width * 0.45,
+    stainSwitchBox.y + stainSwitchBox.height * 0.55,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    stainSwitchBox.x + stainSwitchBox.width * 0.55,
+    stainSwitchBox.y + stainSwitchBox.height * 0.45,
+    { steps: 5 },
+  );
+  await page.mouse.up();
+  await expect.poll(async () => (await niftiEstimate(page)).shape)
+    .not.toEqual([32, 32, 32]);
+  const paneFraming = await page.locator('.nvslide-pane').evaluateAll(
+    (panes) => panes.map((pane) => pane.dataset.framing),
+  );
+  expect(paneFraming.every(Boolean)).toBe(true);
+
+  await page.locator('[data-plane="coronal"] canvas').focus();
+  await expect(page.locator('[data-plane="coronal"]')).toHaveAttribute(
+    "data-active",
+    "true",
+  );
+  const sharedExport = await niftiEstimate(page);
+  await page.locator("#createShareLink").click();
+  await expect.poll(() => new URL(page.url()).searchParams.get("state"))
+    .toMatch(/^gz\./);
+  const sharedUrl = page.url();
+  await expect(page.locator("#shareLink")).toBeVisible();
+  await expect(page.locator("#shareLink")).toHaveValue(sharedUrl);
+  await expect(page.locator("#shareLink")).toBeFocused();
+  expect(await page.locator("#shareLink").evaluate((input) => ({
+    start: input.selectionStart,
+    end: input.selectionEnd,
+    length: input.value.length,
+  }))).toEqual({ start: 0, end: sharedUrl.length, length: sharedUrl.length });
+  await page.goto(sharedUrl);
+  await expect.poll(async () => page.locator('.nvslide-pane').evaluateAll(
+    (panes) => panes.map((pane) => pane.dataset.framing),
+  )).toEqual(paneFraming);
+  await expect(page.locator('[data-plane="coronal"]')).toHaveAttribute(
+    "data-active",
+    "true",
+  );
+  await expect.poll(async () => (await niftiEstimate(page)).shape)
+    .toEqual(sharedExport.shape);
+
+  await page.getByRole("button", { name: "New stain layer" }).click();
+  await page.getByLabel("Stain name").fill("Second");
+  await page.getByLabel("OME-Zarr store URL 1").fill(
+    "http://localhost:4173/test-auto-window/second",
+  );
+  await page.getByRole("button", { name: "Load volume" }).click();
+  await expect.poll(async () => (
+    (await page.locator("#nv-canvas").getAttribute("data-loaded-stain-layers"))
+      ?.split(",").filter(Boolean).length ?? 0
+  ), { timeout: 30_000 }).toBe(2);
+  await expect.poll(async () => (await niftiEstimate(page)).shape)
+    .toEqual(sharedExport.shape);
+  await expect.poll(async () => page.locator('.nvslide-pane').evaluateAll(
+    (panes) => panes.map((pane) => pane.dataset.framing),
+  )).toEqual(paneFraming);
+  await expect(page.locator("#niftiEstimate")).toContainText("Second");
+
+  const firstStain = page.locator(".stain-layer-select").first();
+  await firstStain.click();
+  await expect(firstStain).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(async () => (await niftiEstimate(page)).shape)
+    .toEqual(sharedExport.shape);
+  await expect.poll(async () => page.locator('.nvslide-pane').evaluateAll(
+    (panes) => panes.map((pane) => pane.dataset.framing),
+  )).toEqual(paneFraming);
+});
+
+test("zoom control represents OME-Zarr levels directly", async ({ page }) => {
+  const shapes = [
+    [1, 1, 2048, 2048, 13125],
+    [1, 1, 1024, 1024, 6563],
+    [1, 1, 512, 512, 3282],
+    [1, 1, 256, 256, 1641],
+    [1, 1, 128, 128, 821],
+    [1, 1, 64, 64, 411],
+    [1, 1, 32, 32, 206],
+  ];
+  await page.route("**/test-pyramid/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/.zgroup")) {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ zarr_format: 2 }),
+      });
+      return;
+    }
+    if (path.endsWith("/.zattrs") && !/\/\d+\/\.zattrs$/.test(path)) {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          multiscales: [{
+            axes: [
+              { name: "t" },
+              { name: "c" },
+              { name: "z", unit: "millimeter" },
+              { name: "y", unit: "millimeter" },
+              { name: "x", unit: "millimeter" },
+            ],
+            datasets: shapes.map((_, level) => ({
+              path: String(level),
+              coordinateTransformations: [{
+                type: "scale",
+                scale: [1, 1, 2 ** level, 2 ** level, 2 ** level],
+              }],
+            })),
+          }],
+        }),
+      });
+      return;
+    }
+    const arrayMatch = path.match(/\/(\d+)\/\.zarray$/);
+    if (arrayMatch) {
+      const level = Number(arrayMatch[1]);
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          zarr_format: 2,
+          shape: shapes[level],
+          chunks: [1, 1, 128, 128, 128],
+          dtype: "|u1",
+          compressor: null,
+          fill_value: 0,
+          order: "C",
+          filters: null,
+        }),
+      });
+      return;
+    }
+    if (/\/\d+\/\.zattrs$/.test(path)) {
+      await route.fulfill({ contentType: "application/json", body: "{}" });
+      return;
+    }
+    await route.fulfill({ status: 404, body: "missing chunk" });
+  });
+
+  await page.goto("/?source=custom");
+  await page.getByLabel("OME-Zarr store URL 1").fill("http://localhost:4173/test-pyramid/store");
+  await page.getByRole("button", { name: "Load volume" }).click();
+  await expect(page.locator("#zoom")).toHaveValue("6");
+  await expect(page.locator("#zoomValue")).toHaveText("L6 · overview");
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-fov-levels", "6");
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-requested-level", "6");
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-delivered-level", "6");
+  await expect(page.locator("#axialSlice")).toHaveAttribute("max", "31");
+  await expect(page.locator("#axialSliceValue")).toHaveText("17 / 32");
+  await page.locator("#axialSlice").fill("10");
+  await expect(page.locator("#axialSliceValue")).toHaveText("11 / 32");
+  await page.locator("#zoom").fill("4");
+  await expect(page.locator("#zoomValue")).toHaveText("L4 · pending");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-fov-levels", "4");
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-requested-level", "4");
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-delivered-level", "4");
+  await expect(page.locator("#axialSlice")).toHaveAttribute("max", "127");
+  await expect(page.locator("#axialSlice")).toHaveValue("41");
+  await expect(page.locator("#axialSliceValue")).toHaveText("42 / 128");
+  await expect(page.locator("#visibleLevel")).toHaveText("L4");
+  await expect(page.locator("#zoomValue")).toHaveText("L4");
+  const levelFourUrl = await createShareUrl(page);
+  await page.goto(levelFourUrl);
+  await expect(page.locator("#zoom")).toHaveValue("4");
+  await expect(page.locator("#zoomValue")).toHaveText("L4");
+  await expect(page.locator("#activeLevel")).toHaveAttribute("data-fov-levels", "4");
+  await expect(page.locator("#visibleLevel")).toHaveText("L4");
+  await page.locator("#zoom").fill("5");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.locator("#activeLevel")).toHaveAttribute(
+    "data-fov-levels",
+    "5",
+    { timeout: 10_000 },
+  );
+  await expect(page.locator("#activeLevel")).toHaveText("L5");
+  await expect(page.locator("#visibleLevel")).toHaveText("L5");
+  await expect(page.locator("#zoomValue")).toHaveText("L5");
+});

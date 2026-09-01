@@ -1,4 +1,12 @@
 const appIdPattern = /^[a-z][a-z0-9-]*$/;
+const titlePattern = /<title\b[^>]*>[\s\S]*?<\/title>/i;
+const iconLinkPattern = /\s*<link\b[^>]*\brel=["']?[^"'>]*\bicon\b[^>]*>/gi;
+const placeholderIconPattern = /\bhref=["']data:,?["']/i;
+const managedMetaPatterns = [
+  /\s*<meta\b[^>]*\bname=["']description["'][^>]*>/gi,
+  /\s*<meta\b[^>]*\bproperty=["']og:[^"']*["'][^>]*>/gi,
+  /\s*<meta\b[^>]*\bname=["']twitter:[^"']*["'][^>]*>/gi,
+];
 
 function escapeAttribute(value) {
   return value
@@ -8,36 +16,86 @@ function escapeAttribute(value) {
     .replaceAll('>', '&gt;');
 }
 
+export function hostedAppTitle(title) {
+  return `${title} | Neurodesk Webapps`;
+}
+
+export function hasIconLink(html) {
+  return [...html.matchAll(iconLinkPattern)].some((match) => !placeholderIconPattern.test(match[0]));
+}
+
 export function injectCompositeTheme(html, {
   appId,
+  shell = 'static-html',
   title,
   description,
   version,
   measurementId,
+  url,
   href = '../app-theme.css',
   themeHref = '../theme.js',
   shellHref = '../app-shell.js',
   analyticsHref = '../analytics.js',
   moreAppsHref = '../',
+  iconHref = '../neurodesk-logo.svg',
 }) {
   if (typeof html !== 'string') throw new TypeError('html must be a string');
   if (!appIdPattern.test(appId)) throw new Error(`Invalid app id: ${appId}`);
   if (typeof href !== 'string' || !href.trim()) throw new Error('Theme href must be a non-empty string');
   for (const [label, value] of Object.entries({
-    title, description, version, measurementId, themeHref, shellHref, analyticsHref, moreAppsHref,
+    title, description, version, shell, measurementId, themeHref, shellHref, analyticsHref, moreAppsHref, iconHref,
   })) {
     if (typeof value !== 'string' || !value.trim()) {
       throw new Error(`${label} must be a non-empty string`);
     }
   }
+  if (url !== undefined && !/^https?:\/\/\S+$/.test(url)) {
+    throw new Error(`url must be an absolute http(s) URL, got ${url}`);
+  }
   if (!/<html\b/i.test(html)) throw new Error(`Cannot theme ${appId}: missing <html> element`);
   if (!/<\/head>/i.test(html)) throw new Error(`Cannot theme ${appId}: missing </head> element`);
 
   let themed = html;
+
+  // Normalize the document metadata from the registry so every hosted app
+  // shares one <title> convention and is searchable/linkable with the same
+  // copy the catalog shows. The managed tags are rewritten as one block right
+  // after <title> so repeated runs produce identical output.
+  const meta = (attribute, name, content) => (
+    `<meta ${attribute}="${name}" content="${escapeAttribute(content)}">`
+  );
+  const normalizedTitle = hostedAppTitle(title);
+  const metadataBlock = [
+    `<title>${escapeAttribute(normalizedTitle)}</title>`,
+    meta('name', 'description', description),
+    meta('property', 'og:type', 'website'),
+    meta('property', 'og:title', normalizedTitle),
+    meta('property', 'og:description', description),
+    ...(url ? [meta('property', 'og:url', url)] : []),
+    meta('name', 'twitter:card', 'summary'),
+  ].join('\n  ');
+  for (const pattern of managedMetaPatterns) themed = themed.replace(pattern, '');
+  if (titlePattern.test(themed)) {
+    themed = themed.replace(titlePattern, metadataBlock);
+  } else {
+    themed = themed.replace(/<\/head>/i, `  ${metadataBlock}\n</head>`);
+  }
+
+  // Apps without a favicon fall back to the shared site mark. A `data:,`
+  // placeholder only suppresses the browser's favicon request, so it is
+  // treated as absent and dropped.
+  if (!hasIconLink(themed)) {
+    themed = themed.replace(iconLinkPattern, '');
+    themed = themed.replace(
+      /<\/head>/i,
+      `  <link rel="icon" type="image/svg+xml" href="${escapeAttribute(iconHref)}" data-neurodesk-app-icon>\n</head>`,
+    );
+  }
+
   if (!/<html\b[^>]*\bdata-neurodesk-app=/i.test(themed)) {
     themed = themed.replace(
       /<html\b/i,
-      `<html data-neurodesk-app="${escapeAttribute(appId)}" data-neurodesk-theme="dark"`,
+      `<html data-neurodesk-app="${escapeAttribute(appId)}" data-neurodesk-shell="${escapeAttribute(shell)}" data-neurodesk-theme="dark"`,
     );
   } else if (!/<html\b[^>]*\bdata-neurodesk-theme=/i.test(themed)) {
     themed = themed.replace(/<html\b/i, '<html data-neurodesk-theme="dark"');
@@ -61,7 +119,7 @@ export function injectCompositeTheme(html, {
     const sourceHref = `https://github.com/neurodesk/webapps/tree/main/apps/${appId}`;
     themed = themed.replace(
       /<\/head>/i,
-      `  <script defer src="${escapeAttribute(shellHref)}" data-neurodesk-app-shell data-app-id="${escapeAttribute(appId)}" data-app-title="${escapeAttribute(title)}" data-app-description="${escapeAttribute(description)}" data-app-version="${escapeAttribute(version)}" data-ga4-measurement-id="${escapeAttribute(measurementId)}" data-analytics-href="${escapeAttribute(analyticsHref)}" data-more-apps-href="${escapeAttribute(moreAppsHref)}" data-source-href="${escapeAttribute(sourceHref)}"></script>\n</head>`,
+      `  <script type="module" src="${escapeAttribute(shellHref)}" data-neurodesk-app-shell data-app-id="${escapeAttribute(appId)}" data-app-shell="${escapeAttribute(shell)}" data-app-title="${escapeAttribute(title)}" data-app-description="${escapeAttribute(description)}" data-app-version="${escapeAttribute(version)}" data-ga4-measurement-id="${escapeAttribute(measurementId)}" data-analytics-href="${escapeAttribute(analyticsHref)}" data-more-apps-href="${escapeAttribute(moreAppsHref)}" data-source-href="${escapeAttribute(sourceHref)}"></script>\n</head>`,
     );
   }
 

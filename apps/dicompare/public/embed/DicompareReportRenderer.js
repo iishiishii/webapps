@@ -2,17 +2,29 @@
  * DicompareReportRenderer - Renders compliance results into DOM elements
  * and generates standalone HTML for printing.
  *
- * Provided by dicompare-web for embedding in third-party tools.
- * See: https://github.com/neurodesk/webapps/tree/main/apps/dicompare
+ * This is the source of truth for the renderer that dicompare publishes for
+ * third-party embedding. `apps/dicompare/public/embed/DicompareReportRenderer.js`
+ * is a byte-identical, import-free mirror of this file so it can be served
+ * verbatim from https://dicompare.neurodesk.org/embed/; keep this module free
+ * of imports and sync the mirror when it changes (a package test enforces it).
  *
  * Usage:
- *   import { DicompareReportRenderer } from 'https://dicompare.neurodesk.org/embed/DicompareReportRenderer.js';
+ *   import { DicompareReportRenderer } from '@neurodesk/webapp-components/ui';
  *
  *   const renderer = new DicompareReportRenderer();
  *   renderer.render(containerElement, { acquisitions, complianceResults, schema });
+ *   const printHtml = renderer.generatePrintHtml({ acquisitions, complianceResults, schema });
  */
 
 export class DicompareReportRenderer {
+
+  /**
+   * Document used for DOM creation: the container's own document once
+   * render() has run, so the renderer works inside any window or jsdom.
+   */
+  get _doc() {
+    return this._document ?? globalThis.document;
+  }
 
   /**
    * Render the full report into a container element.
@@ -20,6 +32,7 @@ export class DicompareReportRenderer {
    * @param {Object} data - { acquisitions, complianceResults, schema }
    */
   render(container, data) {
+    this._document = container.ownerDocument;
     container.innerHTML = '';
 
     const { acquisitions, complianceResults, schema } = data;
@@ -63,23 +76,23 @@ export class DicompareReportRenderer {
   }
 
   _createSchemaHeader(schema) {
-    const header = document.createElement('div');
+    const header = this._doc.createElement('div');
     header.className = 'dicompare-schema-header';
 
-    const title = document.createElement('h4');
+    const title = this._doc.createElement('h4');
     title.textContent = schema?.name || 'Protocol';
     header.appendChild(title);
 
     if (schema?.version) {
-      const version = document.createElement('span');
+      const version = this._doc.createElement('span');
       version.className = 'dicompare-schema-version';
       version.textContent = `v${schema.version}`;
-      title.appendChild(document.createTextNode(' '));
+      title.appendChild(this._doc.createTextNode(' '));
       title.appendChild(version);
     }
 
     if (schema?.description) {
-      const desc = document.createElement('p');
+      const desc = this._doc.createElement('p');
       // Show first sentence only for brevity
       const firstSentence = schema.description.split('\n')[0];
       desc.textContent = firstSentence;
@@ -87,7 +100,7 @@ export class DicompareReportRenderer {
     }
 
     if (schema?.authors?.length) {
-      const authors = document.createElement('p');
+      const authors = this._doc.createElement('p');
       authors.className = 'dicompare-schema-authors';
       authors.textContent = `Authors: ${schema.authors.join(', ')}`;
       header.appendChild(authors);
@@ -97,7 +110,7 @@ export class DicompareReportRenderer {
   }
 
   _createSummary(complianceResults) {
-    const summary = document.createElement('div');
+    const summary = this._doc.createElement('div');
     summary.className = 'dicompare-summary';
 
     let pass = 0, fail = 0, warning = 0, na = 0;
@@ -121,7 +134,7 @@ export class DicompareReportRenderer {
     }
 
     for (const { label, cls } of badges) {
-      const badge = document.createElement('span');
+      const badge = this._doc.createElement('span');
       badge.className = `dicompare-summary-badge ${cls}`;
       badge.textContent = label;
       summary.appendChild(badge);
@@ -131,15 +144,15 @@ export class DicompareReportRenderer {
   }
 
   _createAcquisitionSection(compliance, schema, acquisition) {
-    const section = document.createElement('div');
+    const section = this._doc.createElement('div');
     section.className = 'dicompare-acquisition';
 
-    const title = document.createElement('h4');
+    const title = this._doc.createElement('h4');
     title.textContent = compliance.acquisitionName || 'Acquisition';
     section.appendChild(title);
 
     if (compliance.error) {
-      const errorEl = document.createElement('p');
+      const errorEl = this._doc.createElement('p');
       errorEl.className = 'dicompare-error';
       errorEl.textContent = `Validation error: ${compliance.error}`;
       section.appendChild(errorEl);
@@ -148,7 +161,7 @@ export class DicompareReportRenderer {
 
     const results = compliance.results || [];
     if (results.length === 0) {
-      const empty = document.createElement('p');
+      const empty = this._doc.createElement('p');
       empty.className = 'dicompare-empty';
       empty.textContent = 'No validation results for this acquisition.';
       section.appendChild(empty);
@@ -160,7 +173,7 @@ export class DicompareReportRenderer {
     const ruleResults = results.filter(r => r.validationType === 'rule' || r.rule_name);
 
     if (fieldResults.length > 0) {
-      const label = document.createElement('div');
+      const label = this._doc.createElement('div');
       label.className = 'dicompare-section-label';
       label.textContent = 'Field Checks';
       section.appendChild(label);
@@ -168,7 +181,7 @@ export class DicompareReportRenderer {
     }
 
     if (ruleResults.length > 0) {
-      const label = document.createElement('div');
+      const label = this._doc.createElement('div');
       label.className = 'dicompare-section-label';
       label.textContent = 'Validation Rules';
       section.appendChild(label);
@@ -220,44 +233,44 @@ export class DicompareReportRenderer {
    * Create a collapsible section showing unchecked fields.
    */
   _createUncheckedFieldsSection(uncheckedFields) {
-    const wrapper = document.createElement('div');
+    const wrapper = this._doc.createElement('div');
     wrapper.className = 'dicompare-unchecked';
 
     // Toggle button
-    const toggle = document.createElement('button');
+    const toggle = this._doc.createElement('button');
     toggle.className = 'dicompare-unchecked-toggle';
     toggle.innerHTML = `<span><strong>${uncheckedFields.length} field${uncheckedFields.length !== 1 ? 's' : ''}</strong> in data not validated by schema</span><span class="dicompare-chevron">&#9660;</span>`;
     wrapper.appendChild(toggle);
 
     // Content (hidden by default)
-    const content = document.createElement('div');
+    const content = this._doc.createElement('div');
     content.className = 'dicompare-unchecked-content';
     content.style.display = 'none';
 
-    const table = document.createElement('table');
+    const table = this._doc.createElement('table');
     table.className = 'dicompare-table';
-    const thead = document.createElement('thead');
+    const thead = this._doc.createElement('thead');
     thead.innerHTML = '<tr><th>Field</th><th>Value in Data</th></tr>';
     table.appendChild(thead);
 
-    const tbody = document.createElement('tbody');
+    const tbody = this._doc.createElement('tbody');
     for (const f of uncheckedFields) {
-      const tr = document.createElement('tr');
+      const tr = this._doc.createElement('tr');
 
-      const tdField = document.createElement('td');
-      const name = document.createElement('span');
+      const tdField = this._doc.createElement('td');
+      const name = this._doc.createElement('span');
       name.className = 'dicompare-field-name';
       name.textContent = f.keyword || f.name || '';
       tdField.appendChild(name);
       if (f.tag) {
-        const tag = document.createElement('span');
+        const tag = this._doc.createElement('span');
         tag.className = 'dicompare-field-tag';
         tag.textContent = ` (${f.tag})`;
         tdField.appendChild(tag);
       }
       tr.appendChild(tdField);
 
-      const tdValue = document.createElement('td');
+      const tdValue = this._doc.createElement('td');
       tdValue.textContent = this._formatValue(f.value);
       tr.appendChild(tdValue);
 
@@ -278,11 +291,11 @@ export class DicompareReportRenderer {
   }
 
   _createFieldTable(results) {
-    const table = document.createElement('table');
+    const table = this._doc.createElement('table');
     table.className = 'dicompare-table';
 
     // Header
-    const thead = document.createElement('thead');
+    const thead = this._doc.createElement('thead');
     thead.innerHTML = `
       <tr>
         <th>Field</th>
@@ -294,42 +307,42 @@ export class DicompareReportRenderer {
     table.appendChild(thead);
 
     // Body
-    const tbody = document.createElement('tbody');
+    const tbody = this._doc.createElement('tbody');
     for (const r of results) {
-      const tr = document.createElement('tr');
+      const tr = this._doc.createElement('tr');
 
       // Field name + DICOM tag from schema
-      const tdField = document.createElement('td');
+      const tdField = this._doc.createElement('td');
       const keyword = r.fieldName || r.field || '';
-      const fieldNameEl = document.createElement('span');
+      const fieldNameEl = this._doc.createElement('span');
       fieldNameEl.className = 'dicompare-field-name';
       fieldNameEl.textContent = keyword;
       tdField.appendChild(fieldNameEl);
       const dicomTag = this._schemaFieldMap?.get(keyword);
       if (dicomTag) {
-        const tag = document.createElement('span');
+        const tag = this._doc.createElement('span');
         tag.className = 'dicompare-field-tag';
         tag.textContent = `(${dicomTag})`;
-        tdField.appendChild(document.createTextNode(' '));
+        tdField.appendChild(this._doc.createTextNode(' '));
         tdField.appendChild(tag);
       }
       tr.appendChild(tdField);
 
       // Expected
-      const tdExpected = document.createElement('td');
+      const tdExpected = this._doc.createElement('td');
       tdExpected.textContent = this._formatValue(r.expectedValue ?? r.expected ?? '');
       tr.appendChild(tdExpected);
 
       // Actual
-      const tdActual = document.createElement('td');
+      const tdActual = this._doc.createElement('td');
       tdActual.textContent = this._formatValue(r.actualValue ?? r.value ?? '');
       tr.appendChild(tdActual);
 
       // Status
-      const tdStatus = document.createElement('td');
+      const tdStatus = this._doc.createElement('td');
       tdStatus.appendChild(this._createStatusBadge(r.status || r.complianceStatus));
       if (r.message) {
-        const msg = document.createElement('div');
+        const msg = this._doc.createElement('div');
         msg.className = 'dicompare-status-message';
         msg.textContent = r.message;
         tdStatus.appendChild(msg);
@@ -344,10 +357,10 @@ export class DicompareReportRenderer {
   }
 
   _createRuleTable(results, schema) {
-    const table = document.createElement('table');
+    const table = this._doc.createElement('table');
     table.className = 'dicompare-table';
 
-    const thead = document.createElement('thead');
+    const thead = this._doc.createElement('thead');
     thead.innerHTML = `
       <tr>
         <th>Rule</th>
@@ -359,13 +372,13 @@ export class DicompareReportRenderer {
     // Get rule descriptions from schema
     const schemaRules = this._getSchemaRules(schema);
 
-    const tbody = document.createElement('tbody');
+    const tbody = this._doc.createElement('tbody');
     for (const r of results) {
-      const tr = document.createElement('tr');
+      const tr = this._doc.createElement('tr');
 
       // Rule name + description
-      const tdRule = document.createElement('td');
-      const ruleName = document.createElement('div');
+      const tdRule = this._doc.createElement('td');
+      const ruleName = this._doc.createElement('div');
       ruleName.className = 'dicompare-field-name';
       ruleName.textContent = r.rule_name || r.fieldName || 'Rule';
       tdRule.appendChild(ruleName);
@@ -375,7 +388,7 @@ export class DicompareReportRenderer {
         sr.name === (r.rule_name || r.fieldName)
       );
       if (schemaRule?.description) {
-        const desc = document.createElement('div');
+        const desc = this._doc.createElement('div');
         desc.className = 'dicompare-rule-description';
         desc.textContent = schemaRule.description;
         tdRule.appendChild(desc);
@@ -383,10 +396,10 @@ export class DicompareReportRenderer {
       tr.appendChild(tdRule);
 
       // Status + message
-      const tdStatus = document.createElement('td');
+      const tdStatus = this._doc.createElement('td');
       tdStatus.appendChild(this._createStatusBadge(r.status || r.complianceStatus));
       if (r.message) {
-        const msg = document.createElement('div');
+        const msg = this._doc.createElement('div');
         msg.className = 'dicompare-status-message';
         msg.textContent = r.message;
         tdStatus.appendChild(msg);
@@ -413,7 +426,7 @@ export class DicompareReportRenderer {
 
   _createStatusBadge(status) {
     const normalized = this._normalizeStatus(status);
-    const badge = document.createElement('span');
+    const badge = this._doc.createElement('span');
     badge.className = `dicompare-status dicompare-status-${normalized}`;
     badge.textContent = normalized === 'pass' ? 'Pass'
       : normalized === 'fail' ? 'Fail'

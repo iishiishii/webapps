@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "appVersion": "1.4.6",
+  "targetAppVersion": "1.4.6",
+  "upstream": {
+    "repository": "https://github.com/MuscleMap/MuscleMap",
+    "revision": "6e1e1eb6732337c13cab53bd5cc800c69024774f",
+    "license": "MIT"
+  },
+  "publication": {
+    "repository": "sbollmann/neurodesk-webapps-assets",
+    "revision": "a8cdbf8c2874e1a2f617ecc6695244a0810eac11",
+    "baseUrl": "https://huggingface.co/datasets/sbollmann/neurodesk-webapps-assets/resolve/a8cdbf8c2874e1a2f617ecc6695244a0810eac11/musclemap"
+  },
+  "models": [
+    {
+      "id": "wholebody",
+      "status": "legacy",
+      "legacy": true,
+      "displayName": "Whole Body",
+      "overlapDefault": 0.5,
+      "filename": "musclemap-wholebody.onnx",
+      "labelSpaceId": "musclemap-wholebody-v1.3",
+      "config": {
+        "path": "wholebody-v1.3.json",
+        "bytes": 9174,
+        "sha256": "50eece1fdaf2bcc66c0b869e5338810066ecd18cb4e960311a34ac4a07efebc2",
+        "publishedBytes": 9296,
+        "publishedMd5": "d75bf2b324860c0188f80d2700e20a03",
+        "publishedSha256": "221e04d10c68d01dcd316bc852603717fb2e8284a7b079ee76b016e90a2e4561"
+      },
+      "source": {
+        "record": "19976940",
+        "doi": "10.5281/zenodo.19976940",
+        "checkpointUrl": "https://zenodo.org/api/records/19976940/files/contrast_agnostic_wholebody_model.pth/content",
+        "checkpointFilename": "contrast_agnostic_wholebody_model.pth",
+        "checkpointBytes": 54417738,
+        "checkpointMd5": "472b4880647306dfeb9dbe290f51f1e2",
+        "checkpointSha256": "afa167a749a222601e2024535bca73fb27b34738d58fec5795ed86fa4458c60f"
+      },
+      "asset": {
+        "revision": "a8cdbf8c2874e1a2f617ecc6695244a0810eac11",
+        "bytes": 26888722,
+        "sha256": "3bff6e22e54d3d7399247d5e71d6423c91bb636d86ab21e0dd929524afbc2bc7",
+        "precision": "q8",
+        "validationReport": "legacy-provenance-not-recorded"
+      }
+    },
+    {
+      "id": "wholebody",
+      "status": "active",
+      "legacy": false,
+      "displayName": "Whole Body",
+      "overlapDefault": 0.9,
+      "filename": "musclemap-wholebody.onnx",
+      "labelSpaceId": "musclemap-wholebody-v1.4",
+      "config": {
+        "path": "wholebody-v1.4.json",
+        "bytes": 10420,
+        "sha256": "39eccbdf87fe0e4b31924af2cc655800cf99d900b45eb292d9a0671720302463",
+        "publishedBytes": 10555,
+        "publishedMd5": "b586ac488b2e40a4e8624a9a1c52d6b5",
+        "publishedSha256": "82c74f854ab74d8770e6e2b9a240bd23ccc646a7b71b13e6cfd8f9919d2acb26"
+      },
+      "source": {
+        "record": "21929873",
+        "doi": "10.5281/zenodo.21929873",
+        "checkpointUrl": "https://zenodo.org/api/records/21929873/files/contrast_agnostic_wholebody_model.pth/content",
+        "checkpointFilename": "contrast_agnostic_wholebody_model.pth",
+        "checkpointBytes": 104884148,
+        "checkpointMd5": "910b722aeb641c380404c99ec6d1af97",
+        "checkpointSha256": "45dfa2843d2e0b1fd842152d6a79bfd4bcb90899c076ceb6346c59da9a79a16c"
+      },
+      "asset": {
+        "revision": "6380bd2487eeb47bdc59d63eef69fb0241bd1197",
+        "url": "https://github.com/neurodesk/webapps/releases/download/musclemap-model-v1.4-fp32/musclemap-wholebody-v1.4-fp32.onnx",
+        "bytes": 104946960,
+        "sha256": "6380bd2487eeb47bdc59d63eef69fb0241bd11976712677ccee329f83552a1e6",
+        "precision": "fp32",
+        "validationReport": "https://github.com/neurodesk/webapps/releases/download/musclemap-model-v1.4-fp32/musclemap-v1.4-conversion-evidence.json",
+        "parts": [
+          { "path": "models/musclemap-wholebody-v1.4-fp32.part-00", "bytes": 21000000, "sha256": "15a325c63285f00661dfabb58e924958ac9fd33b76868e0431988567c4b49781" },
+          { "path": "models/musclemap-wholebody-v1.4-fp32.part-01", "bytes": 21000000, "sha256": "1428e9754815bf1bf0fe269578e44788be5f6cffa3f110d880f7d05ca918db6a" },
+          { "path": "models/musclemap-wholebody-v1.4-fp32.part-02", "bytes": 21000000, "sha256": "4846fac49ecb36749b1ad937752d3ccf46c3a7ea48f4ebca4a1b4c71071b3e48" },
+          { "path": "models/musclemap-wholebody-v1.4-fp32.part-03", "bytes": 21000000, "sha256": "63246bd7ae1711fc560ae368a5ec07a168c6ca18c32ce1c62aa1193483fd9feb" },
+          { "path": "models/musclemap-wholebody-v1.4-fp32.part-04", "bytes": 20946960, "sha256": "899040852445f7082e4198aafabb20380ed9f2b54e77533500a64ed39b04906d" }
+        ]
+      }
+    },
+    {
+      "id": "abdomen",
+      "status": "legacy",
+      "legacy": true,
+      "displayName": "Abdomen",
+      "overlapDefault": 0.5,
+      "filename": "musclemap-abdomen.onnx",
+      "labelSpaceId": "musclemap-abdomen-v0.0",
+      "config": { "path": "abdomen-v0.0.json", "bytes": 1091, "sha256": "2643f8c71558d55dcad8ee01f1d61caa208ee1a48845a3430511e2c6b9938005", "publishedBytes": 1120, "publishedMd5": "35e0efb873497ad063fee30fdd4ea69b", "publishedSha256": "9f284550378bf7837a98c03c717b21d8b941cec8ae8adf6a95485ea6568a68f4" },
+      "source": { "record": "19631081", "doi": "10.5281/zenodo.19631081" },
+      "asset": { "revision": "a8cdbf8c2874e1a2f617ecc6695244a0810eac11", "bytes": 38999828, "sha256": "f2e64dd67104422f94c29382136aa438835aaea7aadc91a917178732cfc15d41", "precision": "q8", "validationReport": "legacy-provenance-not-recorded" }
+    },
+    {
+      "id": "forearm",
+      "status": "legacy",
+      "legacy": true,
+      "displayName": "Forearm",
+      "overlapDefault": 0.5,
+      "filename": "musclemap-forearm.onnx",
+      "labelSpaceId": "musclemap-forearm-v0.0",
+      "config": { "path": "forearm-v0.0.json", "bytes": 821, "sha256": "68503ae1276cd75d7f23da8d25321ceb88ab751054aa33df132d07c2aea7a971", "publishedBytes": 849, "publishedMd5": "f80881b5372b0bba403f2f94f1a68e0b", "publishedSha256": "91958f6696386de138c83c8dd57817b229cc37490f9c9551e318e1196ce4bf42" },
+      "source": { "record": "19633115", "doi": "10.5281/zenodo.19633115" },
+      "asset": { "revision": "a8cdbf8c2874e1a2f617ecc6695244a0810eac11", "bytes": 26364376, "sha256": "48517f2aadc19183025dfe1a1952c24ae79d9a33fa5dd8154b46cf47fd87d3dd", "precision": "q8", "validationReport": "legacy-provenance-not-recorded" }
+    },
+    {
+      "id": "leg",
+      "status": "legacy",
+      "legacy": true,
+      "displayName": "Leg",
+      "overlapDefault": 0.5,
+      "filename": "musclemap-leg.onnx",
+      "labelSpaceId": "musclemap-leg-v0.0",
+      "config": { "path": "leg-v0.0.json", "bytes": 1560, "sha256": "d506531930f82da47d0bf343a23b650131da50bc27ff086068a43f25c80fc7ea", "publishedBytes": 1595, "publishedMd5": "9da4d3ae4857a015f615649646e34bd1", "publishedSha256": "d62a6810ee056fb7cb239cac5cfdec981330756bc99fe9d162a7b7f9f50fbd8c" },
+      "source": { "record": "19633057", "doi": "10.5281/zenodo.19633057" },
+      "asset": { "revision": "a8cdbf8c2874e1a2f617ecc6695244a0810eac11", "bytes": 39028867, "sha256": "3ad1c902998849ea66942863d157e1f8e608fb2c9d6b3230ee56de0e0840bcb4", "precision": "q8", "validationReport": "legacy-provenance-not-recorded" }
+    },
+    {
+      "id": "pelvis",
+      "status": "legacy",
+      "legacy": true,
+      "displayName": "Pelvis",
+      "overlapDefault": 0.5,
+      "filename": "musclemap-pelvis.onnx",
+      "labelSpaceId": "musclemap-pelvis-v0.0",
+      "config": { "path": "pelvis-v0.0.json", "bytes": 1505, "sha256": "26b82585cb64635e1ddc48948075d64ea172ed52735115176e6a0e92940f29ab", "publishedBytes": 1539, "publishedMd5": "c8cba0118c5dfa5f870ff138187c1c55", "publishedSha256": "78d225099a67b8c225cc8f35b4bd1137e861a4db84a91924b4ca74b457070a89" },
+      "source": { "record": "19632902", "doi": "10.5281/zenodo.19632902" },
+      "asset": { "revision": "a8cdbf8c2874e1a2f617ecc6695244a0810eac11", "bytes": 39023986, "sha256": "34babe3b30a587dc4f67f44da44a6f89f7f66dcd2d128351ecf9356cbc0c32e4", "precision": "q8", "validationReport": "legacy-provenance-not-recorded" }
+    },
+    {
+      "id": "thigh",
+      "status": "legacy",
+      "legacy": true,
+      "displayName": "Thigh",
+      "overlapDefault": 0.5,
+      "filename": "musclemap-thigh.onnx",
+      "labelSpaceId": "musclemap-thigh-v0.0",
+      "config": { "path": "thigh-v0.0.json", "bytes": 2789, "sha256": "ceffc56269db84335e9873633ba8102bd962a344b07d11db49fe9846fbe1f5a3", "publishedBytes": 2840, "publishedMd5": "1f820178021a866103e901d7bfa0af68", "publishedSha256": "9d123314d744d21a0c6b8727479771c5fba43a564613bee3d72ec59de1c73025" },
+      "source": { "record": "19633000", "doi": "10.5281/zenodo.19633000" },
+      "asset": { "revision": "a8cdbf8c2874e1a2f617ecc6695244a0810eac11", "bytes": 39099153, "sha256": "2d1a607adfa0758516069e039717079a2340811e3d3c70a7e9621aa1564399f2", "precision": "q8", "validationReport": "legacy-provenance-not-recorded" }
+    }
+  ]
+}

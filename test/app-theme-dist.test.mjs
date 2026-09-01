@@ -14,6 +14,7 @@ test('adds the shared theme to a standalone app distribution', async (t) => {
   const themeScriptFile = join(root, 'theme.js');
   const shellFile = join(root, 'app-shell.js');
   const analyticsFile = join(root, 'analytics.js');
+  const iconFile = join(root, 'neurodesk-logo.svg');
   await mkdir(distDir);
   await writeFile(
     join(distDir, 'index.html'),
@@ -23,6 +24,7 @@ test('adds the shared theme to a standalone app distribution', async (t) => {
   await writeFile(themeScriptFile, '/* shared theme controller */');
   await writeFile(shellFile, '/* shared app shell */');
   await writeFile(analyticsFile, '/* page-view analytics */');
+  await writeFile(iconFile, '<svg xmlns="http://www.w3.org/2000/svg"></svg>');
 
   await applyAppTheme({
     app: {
@@ -37,15 +39,25 @@ test('adds the shared theme to a standalone app distribution', async (t) => {
     themeScriptFile,
     shellFile,
     analyticsFile,
+    iconFile,
   });
 
   const html = await readFile(join(distDir, 'index.html'), 'utf8');
-  assert.match(html, /<html data-neurodesk-app="example-app" data-neurodesk-theme="dark" lang="en">/);
+  assert.match(html, /<html data-neurodesk-app="example-app" data-neurodesk-shell="static-html" data-neurodesk-theme="dark" lang="en">/);
   assert.match(html, /href="\.\/app-theme\.css" data-neurodesk-app-theme/);
   assert.match(html, /src="\.\/theme\.js" data-neurodesk-theme-controller/);
   assert.match(html, /src="\.\/app-shell\.js" data-neurodesk-app-shell/);
   assert.match(html, /data-app-title="Example App"/);
   assert.match(html, /data-ga4-measurement-id="G-4Z9774J59Y"/);
+  assert.match(html, /<title>Example App \| Neurodesk Webapps<\/title>/);
+  assert.match(html, /<meta name="description" content="An example scientific app\.">/);
+  assert.match(html, /<meta property="og:title" content="Example App \| Neurodesk Webapps">/);
+  assert.doesNotMatch(html, /og:url/);
+  assert.match(html, /<link rel="icon" type="image\/svg\+xml" href="\.\/neurodesk-logo\.svg" data-neurodesk-app-icon>/);
+  assert.equal(
+    await readFile(join(distDir, 'neurodesk-logo.svg'), 'utf8'),
+    '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+  );
   assert.equal(
     await readFile(join(distDir, 'app-theme.css'), 'utf8'),
     ':root { --neurodesk-primary: #6aa329; }',
@@ -53,4 +65,38 @@ test('adds the shared theme to a standalone app distribution', async (t) => {
   assert.equal(await readFile(join(distDir, 'theme.js'), 'utf8'), '/* shared theme controller */');
   assert.equal(await readFile(join(distDir, 'app-shell.js'), 'utf8'), '/* shared app shell */');
   assert.equal(await readFile(join(distDir, 'analytics.js'), 'utf8'), '/* page-view analytics */');
+});
+
+test('keeps an app-provided favicon and does not copy the site mark', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'neurodesk-app-theme-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const distDir = join(root, 'dist');
+  await mkdir(distDir);
+  await writeFile(
+    join(distDir, 'index.html'),
+    '<!doctype html><html><head><link rel="icon" href="favicon.ico"><title>App</title></head><body></body></html>',
+  );
+  const files = {};
+  for (const name of ['theme.css', 'theme.js', 'app-shell.js', 'analytics.js', 'neurodesk-logo.svg']) {
+    files[name] = join(root, name);
+    await writeFile(files[name], `/* ${name} */`);
+  }
+
+  await applyAppTheme({
+    app: { id: 'example-app', title: 'Example App', description: 'An example scientific app.' },
+    version: '1.2.3',
+    measurementId: 'G-4Z9774J59Y',
+    distDir,
+    themeFile: files['theme.css'],
+    themeScriptFile: files['theme.js'],
+    shellFile: files['app-shell.js'],
+    analyticsFile: files['analytics.js'],
+    iconFile: files['neurodesk-logo.svg'],
+  });
+
+  const html = await readFile(join(distDir, 'index.html'), 'utf8');
+  assert.match(html, /<link rel="icon" href="favicon\.ico">/);
+  assert.doesNotMatch(html, /data-neurodesk-app-icon/);
+  await assert.rejects(readFile(join(distDir, 'neurodesk-logo.svg')), { code: 'ENOENT' });
 });

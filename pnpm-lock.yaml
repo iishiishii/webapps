@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@niivue/niivue@1.0.0-rc.11': 4eb0de8e86dc7d24f196ff2255c9d6c95065e7c68d7254581d9a39681d2c8cf2
+  '@niivue/niivue@1.0.0-rc.11': f9748394ca2414090ff8580b3514639f284a8be82cc3b0152e59c96d4a48b3b6
 
 importers:
 
@@ -32,6 +32,9 @@ importers:
 
   apps/browserqc:
     dependencies:
+      '@neurodesk/runtime-support':
+        specifier: workspace:*
+        version: link:../../packages/runtime-support
       '@neurodesk/webapp-components':
         specifier: workspace:*
         version: link:../../packages/components
@@ -91,6 +94,9 @@ importers:
 
   apps/deface:
     dependencies:
+      '@neurodesk/runtime-support':
+        specifier: workspace:*
+        version: link:../../packages/runtime-support
       '@neurodesk/webapp-components':
         specifier: workspace:*
         version: link:../../packages/components
@@ -143,9 +149,6 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.7)
-      '@neurodesk/webapp-components':
-        specifier: workspace:*
-        version: link:../../packages/components
       '@niivue/dcm2niix':
         specifier: ^1.2.0
         version: 1.2.0
@@ -293,28 +296,6 @@ importers:
         specifier: ^5.4.6
         version: 5.4.21(@types/node@24.13.3)
 
-  apps/omezarr-viewer:
-    dependencies:
-      '@neurodesk/webapp-components':
-        specifier: workspace:*
-        version: link:../../packages/components
-      '@niivue/niivue':
-        specifier: 1.0.0-rc.11
-        version: 1.0.0-rc.11(patch_hash=4eb0de8e86dc7d24f196ff2255c9d6c95065e7c68d7254581d9a39681d2c8cf2)
-      zarrita:
-        specifier: ^0.7.3
-        version: 0.7.4
-    devDependencies:
-      '@playwright/test':
-        specifier: ^1.44.0
-        version: 1.61.1
-      typescript:
-        specifier: ^5.8.3
-        version: 5.8.3
-      vite:
-        specifier: ^6.3.2
-        version: 6.4.3(@types/node@24.13.3)(jiti@2.7.0)(yaml@2.9.0)
-
   apps/qsmbly:
     dependencies:
       '@neurodesk/webapp-components':
@@ -388,6 +369,28 @@ importers:
         specifier: ^24.0.0
         version: 24.1.3
 
+  apps/zarro:
+    dependencies:
+      '@neurodesk/webapp-components':
+        specifier: workspace:*
+        version: link:../../packages/components
+      '@niivue/niivue':
+        specifier: 1.0.0-rc.11
+        version: 1.0.0-rc.11(patch_hash=f9748394ca2414090ff8580b3514639f284a8be82cc3b0152e59c96d4a48b3b6)
+      zarrita:
+        specifier: ^0.7.3
+        version: 0.7.4
+    devDependencies:
+      '@playwright/test':
+        specifier: ^1.44.0
+        version: 1.61.1
+      typescript:
+        specifier: ^5.8.3
+        version: 5.8.3
+      vite:
+        specifier: ^6.3.2
+        version: 6.4.3(@types/node@24.13.3)(jiti@2.7.0)(yaml@2.9.0)
+
   packages/analytics: {}
 
   packages/components:
@@ -402,7 +405,11 @@ importers:
         specifier: '>=18.0.0'
         version: 19.2.7
 
-  packages/runtime-support: {}
+  packages/runtime-support:
+    dependencies:
+      '@niivue/dcm2niix':
+        specifier: ^1.2.0
+        version: 1.2.0
 
 packages:
 
@@ -2255,6 +2262,7 @@ packages:
   '@xmldom/xmldom@0.8.13':
     resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
     engines: {node: '>=10.0.0'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@zarrita/storage@0.1.4':
     resolution: {integrity: sha512-qURfJAQcQGRfDQ4J9HaCjGaj3jlJKc66bnRk6G/IeLUsM7WKyG7Bzsuf1EZurSXyc0I4LVcu6HaeQQ4d3kZ16g==}
@@ -6511,7 +6519,7 @@ snapshots:
     optionalDependencies:
       '@rollup/rollup-linux-x64-gnu': 4.62.2
 
-  '@niivue/niivue@1.0.0-rc.11(patch_hash=4eb0de8e86dc7d24f196ff2255c9d6c95065e7c68d7254581d9a39681d2c8cf2)':
+  '@niivue/niivue@1.0.0-rc.11(patch_hash=f9748394ca2414090ff8580b3514639f284a8be82cc3b0152e59c96d4a48b3b6)':
     dependencies:
       cbor-x: 1.6.4
       clipper2-ts: 2.0.1-18

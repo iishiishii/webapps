@@ -30,7 +30,6 @@ export function normalizeStage(stage = {}) {
     outputStages: stage.outputStages || [stage.id],
     assets: stage.assets || [],
     runnable: stage.runnable ?? true,
-    pluginId: stage.pluginId || null,
     metadata: stage.metadata || {}
   };
 }

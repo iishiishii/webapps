@@ -5,9 +5,21 @@ import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { chromium } from '@playwright/test';
 import { loadAppsRegistry, repoRoot } from '../scripts/lib/apps-registry.mjs';
+import { verifyMuscleMapFullPipeline } from './musclemap-full-pipeline-smoke.mjs';
+import { verifyMuscleMapThreads } from './multithreaded-ort-smoke.mjs';
 
 const dist = join(repoRoot, 'dist');
 const registry = await loadAppsRegistry();
+const requestedAppIds = new Set((process.env.SMOKE_APPS ?? '').split(',').filter(Boolean));
+const skipScientificWorkflows = process.env.SMOKE_SKIP_SCIENTIFIC === '1';
+const appsUnderTest = requestedAppIds.size
+  ? registry.apps.filter(({ id }) => requestedAppIds.has(id))
+  : registry.apps;
+if (appsUnderTest.length !== (requestedAppIds.size || registry.apps.length)) {
+  const found = new Set(appsUnderTest.map(({ id }) => id));
+  const missing = [...requestedAppIds].filter((id) => !found.has(id));
+  throw new Error(`Unknown SMOKE_APPS entries: ${missing.join(', ')}`);
+}
 const mimeTypes = new Map([
   ['.css', 'text/css; charset=utf-8'],
   ['.html', 'text/html; charset=utf-8'],
@@ -176,7 +188,7 @@ try {
   if (resetMatches !== registry.apps.length) failures.push(`landing reset shows ${resetMatches} apps, expected ${registry.apps.length}`);
   await landing.close();
 
-  for (const app of registry.apps) {
+  for (const app of appsUnderTest) {
     const page = await browser.newPage();
     await page.route(/googletagmanager\.com|google-analytics\.com|analytics\.google\.com/,
       (route) => route.fulfill({ status: 200, contentType: 'application/javascript', body: '' }));
@@ -199,6 +211,7 @@ try {
       if (url.pathname === '/app-theme.css') return;
       if (url.pathname === '/theme.js') return;
       if (url.pathname === '/app-shell.js') return;
+      if (url.pathname.startsWith('/shell-adapters/')) return;
       if (url.pathname === '/analytics.js') return;
       if (app.id === 'qsmbly' && url.pathname === '/qsm-nav.js') return;
       if (returningHome && url.pathname === '/') return;
@@ -226,6 +239,61 @@ try {
       brandPrimary: getComputedStyle(document.documentElement).getPropertyValue('--nd-brand-primary').trim(),
       pageBackground: getComputedStyle(document.body).backgroundColor,
     }));
+    const darkStartPage = await page.evaluate(() => {
+      const startPage = [...document.querySelectorAll('.start-page')]
+        .find((element) => element.getBoundingClientRect().height > 0);
+      if (!startPage) return null;
+      return getComputedStyle(startPage).backgroundColor;
+    });
+    const darkStartPageContrast = await page.evaluate(() => {
+      const pairings = [
+        ['.start-hero h2', '.start-page'],
+        ['.start-intro', '.start-page'],
+        ['.start-local-badge', '.start-local-badge'],
+        ['.start-local-panel li', '.start-local-panel'],
+        ['.start-step h4', '.start-step'],
+        ['.start-step p', '.start-step'],
+      ];
+      const rgba = (value) => {
+        const channels = (value.match(/[\d.]+/g) ?? []).map(Number);
+        return [channels[0], channels[1], channels[2], channels[3] ?? 1];
+      };
+      const composite = (foreground, background) => {
+        const alpha = foreground[3] + background[3] * (1 - foreground[3]);
+        return [0, 1, 2].map((index) => (
+          foreground[index] * foreground[3]
+          + background[index] * background[3] * (1 - foreground[3])
+        ) / alpha).concat(alpha);
+      };
+      const effectiveBackground = (element) => {
+        const parent = element.parentElement
+          ? effectiveBackground(element.parentElement)
+          : [255, 255, 255, 1];
+        return composite(rgba(getComputedStyle(element).backgroundColor), parent);
+      };
+      const luminance = (value) => value.slice(0, 3).map((channel) => channel / 255)
+        .map((channel) => channel <= 0.04045
+          ? channel / 12.92
+          : ((channel + 0.055) / 1.055) ** 2.4)
+        .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+      const contrast = (foreground, background) => {
+        const values = [luminance(foreground), luminance(background)];
+        return (Math.max(...values) + 0.05) / (Math.min(...values) + 0.05);
+      };
+      return pairings.flatMap(([textSelector, backgroundSelector]) => {
+        const textElement = document.querySelector(textSelector);
+        const backgroundElement = textElement?.closest(backgroundSelector);
+        if (!textElement || !backgroundElement || textElement.getBoundingClientRect().height === 0) return [];
+        const foreground = rgba(getComputedStyle(textElement).color);
+        const background = effectiveBackground(backgroundElement);
+        return [{
+          selector: textSelector,
+          foreground: getComputedStyle(textElement).color,
+          background: background.slice(0, 3).map(Math.round).join(' '),
+          ratio: contrast(foreground, background),
+        }];
+      });
+    });
 
     if (!response?.ok()) failures.push(`${app.id}: document returned ${response?.status() ?? 'no response'}`);
     if (!title.trim()) failures.push(`${app.id}: empty document title`);
@@ -264,6 +332,30 @@ try {
     if (!['rgb(16, 20, 13)', 'rgb(10, 12, 8)'].includes(themeState.pageBackground)) {
       failures.push(`${app.id}: page background is outside the dark palette: ${themeState.pageBackground}`);
     }
+    if (darkStartPage && !['rgb(22, 26, 14)', 'rgb(16, 20, 13)', 'rgb(10, 12, 8)'].includes(darkStartPage)) {
+      failures.push(`${app.id}: start page background is outside the dark palette: ${darkStartPage}`);
+    }
+    for (const { selector, foreground, background, ratio } of darkStartPageContrast) {
+      if (ratio < 4.5) {
+        failures.push(`${app.id}: ${selector} dark-theme contrast is ${ratio.toFixed(2)}:1 (${foreground} on ${background})`);
+      }
+    }
+
+    const overflowingControls = await page.evaluate(() => [...document.querySelectorAll('.nd-imaging-controls')]
+      .filter((controls) => controls.scrollWidth > controls.clientWidth + 1)
+      .map((controls) => ({ clientWidth: controls.clientWidth, scrollWidth: controls.scrollWidth })));
+    if (overflowingControls.length) {
+      failures.push(`${app.id}: imaging controls overflow horizontally: ${JSON.stringify(overflowingControls)}`);
+    }
+
+    if (app.id === 'calmar') {
+      const startPage = page.locator('#startPage');
+      if (!(await startPage.isVisible())) failures.push('calmar: start page is not visible before entering the app');
+      else {
+        await page.locator('#enterAppButton').click();
+        if (await startPage.isVisible()) failures.push('calmar: Start analysis did not enter the analysis workspace');
+      }
+    }
 
     const appThemeToggle = visibleTopBars.first().locator('[data-neurodesk-theme-toggle]');
     if (await appThemeToggle.count() !== 1) {
@@ -288,7 +380,21 @@ try {
     if (subpathLeaks.length) failures.push(`${app.id}: assets escaped app subpath: ${[...new Set(subpathLeaks)].join(', ')}`);
     if (app.id === 'seedseg') {
       const consoleText = await page.locator('#consoleOutput').innerText();
-      if (!consoleText.includes('ONNX Runtime ready')) failures.push(`seedseg: worker did not initialize: ${consoleText.trim()}`);
+      if (!consoleText.includes('Worker ready')) failures.push(`seedseg: worker did not initialize: ${consoleText.trim()}`);
+    }
+    if (app.id === 'musclemap' && !skipScientificWorkflows) {
+      try {
+        await page.waitForFunction(() => window.crossOriginIsolated === true, null, { timeout: 30_000 });
+        const result = await verifyMuscleMapThreads(page, `${origin}/${app.path}/`);
+        console.log(`PASS ${app.id}: ORT session used ${result.threadCount} threads`);
+        const pipeline = await verifyMuscleMapFullPipeline(page, `${origin}/${app.path}/`);
+        console.log(
+          `PASS ${app.id}: full v1.4 pipeline produced ${pipeline.segmentationBytes} bytes `
+          + `and ${pipeline.totalVolumeMl} mL of metrics`,
+        );
+      } catch (error) {
+        failures.push(`${app.id}: ${error.message}`);
+      }
     }
 
     const moreApps = page.locator('[title="More Neurodesk web apps"]:visible').first();
@@ -314,4 +420,4 @@ try {
 }
 
 if (failures.length) throw new Error(`Composite-site smoke failures:\n- ${failures.join('\n- ')}`);
-console.log(`Composite-site smoke passed for all ${registry.apps.length} webapps.`);
+console.log(`Composite-site smoke passed for ${appsUnderTest.length} webapp${appsUnderTest.length === 1 ? '' : 's'}.`);

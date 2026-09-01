@@ -8,12 +8,13 @@ import { validateAssetManifest } from './lib/scientific-assets.mjs';
 
 const maxCloudflareAsset = 25 * 1024 * 1024;
 const maxPagesSite = 750 * 1024 * 1024;
-const maxAppSize = 100 * 1024 * 1024;
+const defaultMaxAppSize = 100 * 1024 * 1024;
 const maxFileCount = 20_000;
 const maxDuplicateRatio = 0.10;
 const forbidden = [];
 const oversized = [];
 const content = new Map();
+const walkedFiles = [];
 const appSizes = new Map();
 let totalBytes = 0;
 let compressedBytes = 0;
@@ -33,6 +34,7 @@ async function walk(directory) {
       compressedBytes += gzipSync(bytes).length;
       fileCount += 1;
       const hash = createHash('sha256').update(bytes).digest('hex');
+      walkedFiles.push({ path, hash, size });
       if (!content.has(hash)) content.set(hash, size);
       const app = selectedApp || path.match(/^dist\/([^/]+)\//)?.[1];
       if (app && app !== '_runtime') appSizes.set(app, (appSizes.get(app) || 0) + size);
@@ -54,14 +56,39 @@ for (const app of registry.apps) {
 }
 const uniqueBytes = [...content.values()].reduce((sum, size) => sum + size, 0);
 const duplicateBytes = totalBytes - uniqueBytes;
+let intentionalRuntimeDuplicateBytes = 0;
+if (!selectedApp) {
+  const runtimeManifest = JSON.parse(await readFile(join(repoRoot, 'runtime-assets', 'manifest.json'), 'utf8'));
+  for (const app of registry.apps) {
+    for (const familyId of app.app_scoped_runtime_families) {
+      const family = runtimeManifest.families.find((candidate) => candidate.id === familyId);
+      if (!family) throw new Error(`${app.id} declares unknown app-scoped runtime family '${familyId}'`);
+      let localCopies = 0;
+      for (const runtimeFile of family.files) {
+        const localCopy = walkedFiles.find((file) => (
+          file.path.startsWith(`dist/${app.path}/`)
+          && file.path.endsWith(`/${runtimeFile.name}`)
+          && file.hash === runtimeFile.sha256
+        ));
+        if (localCopy) {
+          intentionalRuntimeDuplicateBytes += localCopy.size;
+          localCopies += 1;
+        }
+      }
+      if (localCopies === 0) throw new Error(`${app.id} has no files from app-scoped runtime family '${familyId}'`);
+    }
+  }
+}
+const budgetDuplicateBytes = Math.max(0, duplicateBytes - intentionalRuntimeDuplicateBytes);
 const budgetErrors = [];
 if (!selectedApp && totalBytes > maxPagesSite) budgetErrors.push(`site is ${totalBytes} bytes; budget is ${maxPagesSite}`);
 if (fileCount > maxFileCount) budgetErrors.push(`site contains ${fileCount} files; budget is ${maxFileCount}`);
-if (!selectedApp && totalBytes && duplicateBytes / totalBytes > maxDuplicateRatio) {
-  budgetErrors.push(`duplicate content is ${(duplicateBytes / totalBytes * 100).toFixed(1)}%; budget is ${maxDuplicateRatio * 100}%`);
+if (!selectedApp && totalBytes && budgetDuplicateBytes / totalBytes > maxDuplicateRatio) {
+  budgetErrors.push(`undeclared duplicate content is ${(budgetDuplicateBytes / totalBytes * 100).toFixed(1)}%; budget is ${maxDuplicateRatio * 100}%`);
 }
 for (const [app, size] of appSizes) {
-  if (size > maxAppSize) budgetErrors.push(`${app} is ${size} bytes; per-app budget is ${maxAppSize}`);
+  const budget = registry.apps.find(candidate => candidate.id === app)?.artifact_budget_bytes ?? defaultMaxAppSize;
+  if (size > budget) budgetErrors.push(`${app} is ${size} bytes; per-app budget is ${budget}`);
 }
 
 if (forbidden.length || oversized.length || manifestErrors.length || budgetErrors.length) {
@@ -78,7 +105,8 @@ console.log(JSON.stringify({
   files: fileCount,
   totalBytes,
   estimatedCompressedBytes: compressedBytes,
-  duplicateBytes,
-  duplicatePercent: Number((duplicateBytes / totalBytes * 100).toFixed(1)),
+  duplicateBytes: budgetDuplicateBytes,
+  duplicatePercent: Number((budgetDuplicateBytes / totalBytes * 100).toFixed(1)),
+  intentionalRuntimeDuplicateBytes,
   largestApps: [...appSizes].sort((a, b) => b[1] - a[1]).slice(0, 5),
 }, null, 2));

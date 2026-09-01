@@ -1,6 +1,6 @@
 {
   "name": "dicompare",
-  "version": "0.11.6",
+  "version": "0.11.8",
   "description": "DICOM compliance validation tool for medical imaging",
   "author": {
     "name": "Ashley Stewart",
@@ -25,7 +25,6 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@neurodesk/webapp-components": "workspace:*",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-python": "^6.2.1",
     "@codemirror/lint": "^6.8.5",

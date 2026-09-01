@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Explore multiscale OME-Zarr volumes directly from cloud storage in your browser."
+    />
+    <title>ZARRo — Neurodesk</title>
+  </head>
+  <body>
+    <div id="app">
+      <aside id="controls" aria-label="Viewer controls">
+        <section class="control-panel source-panel" aria-labelledby="source-heading">
+          <div class="panel-heading">
+            <span class="panel-number" aria-hidden="true">01</span>
+            <div>
+              <h2 id="source-heading">Choose a volume</h2>
+              <p>Stream a public multiscale OME-Zarr store without downloading it first.</p>
+            </div>
+          </div>
+
+          <label class="field" for="source">
+            <span>Source</span>
+            <select id="source">
+              <option value="dandi" selected>DANDI Archive</option>
+              <option value="custom">OME-Zarr URL</option>
+            </select>
+          </label>
+
+          <div class="field" id="dandiArchiveControl">
+            <details class="dandi-browser" open>
+              <summary>Browse the DANDI Archive</summary>
+              <div class="dandi-search-grid">
+                <label for="dandisetId">
+                  <span>Dandiset</span>
+                  <input
+                    id="dandisetId"
+                    type="text"
+                    inputmode="numeric"
+                    value="000108"
+                    pattern="[0-9]{6}"
+                    maxlength="6"
+                    autocomplete="off"
+                  />
+                </label>
+                <label for="dandiVersion">
+                  <span>Version</span>
+                  <input id="dandiVersion" type="text" value="draft" autocomplete="off" />
+                </label>
+              </div>
+              <label for="dandiQuery">
+                <span>Find OME-Zarr assets</span>
+                <div class="dandi-search-row">
+                  <input
+                    id="dandiQuery"
+                    type="search"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                  <button id="searchDandi" type="button">Search</button>
+                </div>
+              </label>
+              <output id="dandiSearchStatus" role="status" aria-live="polite">
+                Search paths or leave blank to browse by subject, sample, and stain.
+              </output>
+              <div id="dandiResults" class="dandi-results" aria-label="DANDI OME-Zarr results"></div>
+            </details>
+          </div>
+
+          <div class="field custom-url" id="zarrUrlControl" hidden>
+            <label for="customStainName">
+              <span>Stain name</span>
+              <input
+                id="customStainName"
+                type="text"
+                placeholder="e.g. DAPI"
+                autocomplete="off"
+              />
+            </label>
+            <span>Store URLs</span>
+            <div id="zarrUrls" class="zarr-url-list">
+              <div class="zarr-url-row">
+                <input
+                  id="zarrUrl"
+                  type="url"
+                  inputmode="url"
+                  aria-label="OME-Zarr store URL 1"
+                  placeholder="https://example.org/image.ome.zarr"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <button
+                  id="removeZarrUrl"
+                  class="remove-url-button"
+                  type="button"
+                  aria-label="Remove OME-Zarr store 1"
+                  disabled
+                >Remove</button>
+              </div>
+            </div>
+            <div class="custom-layer-actions">
+              <button id="addZarrUrl" class="add-url-button" type="button">+ Add another URL</button>
+              <button id="newCustomLayer" class="add-url-button" type="button">+ New stain layer</button>
+            </div>
+            <small>Each store is placed from its OME-NGFF translation coordinates. All selected-level voxel spacings must match.</small>
+          </div>
+
+          <div class="source-actions">
+            <button class="primary-button" id="reload" type="button">Load volume</button>
+            <button id="clearDandiSelection" type="button" disabled>Clear all layers</button>
+          </div>
+          <div
+            id="stainLayersControl"
+            class="stain-layer-list"
+            aria-label="Loaded stain layers"
+            hidden
+          >
+            <div class="stain-layer-list-heading">
+              <strong>Stain layers</strong>
+              <small>Select which loaded stain is visible in the viewer.</small>
+            </div>
+            <div id="stainLayers"></div>
+          </div>
+          <div
+            id="dandiSelectedStores"
+            class="selected-store-list"
+            aria-label="Selected DANDI stores"
+            hidden
+          ></div>
+          <output id="activeLevel" hidden aria-hidden="true"></output>
+        </section>
+
+        <section class="control-panel" aria-labelledby="view-heading">
+          <div class="panel-heading compact">
+            <span class="panel-number" aria-hidden="true">02</span>
+            <div>
+              <h2 id="view-heading">Navigate</h2>
+              <p>Change the layout, scale, and center of the visible field.</p>
+            </div>
+          </div>
+
+          <label class="field" for="layout">
+            <span>Layout</span>
+            <select id="layout">
+              <option value="34" selected>NVSlide axial focus</option>
+              <option value="30">Axial focus</option>
+              <option value="31">Equal slices horizontal</option>
+              <option value="33">Equal slices vertical</option>
+              <option value="32">Equal slices + 3D</option>
+              <option value="4">3D render</option>
+              <option value="0">Axial</option>
+              <option value="1">Coronal</option>
+              <option value="2">Sagittal</option>
+            </select>
+          </label>
+
+          <div class="slider-field zoom-field">
+            <label for="zoom">Zoom level</label>
+            <input
+              id="zoom"
+              type="range"
+              min="0"
+              max="0"
+              step="1"
+              value="0"
+              aria-describedby="zoomValue zoomLevelHelp"
+            />
+            <output id="zoomValue" for="zoom" aria-live="polite">L0</output>
+            <button id="applyZoom" type="button" disabled>Apply</button>
+          </div>
+          <small class="zoom-level-help" id="zoomLevelHelp">
+            L0 is finest; higher levels show a wider overview.
+          </small>
+
+          <select id="zarrLevel" hidden aria-hidden="true" tabindex="-1">
+            <option value="auto" selected>Auto</option>
+          </select>
+
+          <input id="panX" type="hidden" value="0" />
+          <output id="panXValue" for="panX" hidden>0%</output>
+          <input id="panY" type="hidden" value="0" />
+          <output id="panYValue" for="panY" hidden>0%</output>
+          <input id="panZ" type="hidden" value="0" />
+          <output id="panZValue" for="panZ" hidden>0%</output>
+          <div class="slider-field axial-slice-field">
+            <label for="axialSlice">Axial slice</label>
+            <input
+              id="axialSlice"
+              type="range"
+              min="0"
+              max="0"
+              step="1"
+              value="0"
+              disabled
+              aria-describedby="axialSliceValue axialSliceHelp"
+            />
+            <output id="axialSliceValue" for="axialSlice" aria-live="polite">—</output>
+          </div>
+          <small class="zoom-level-help" id="axialSliceHelp">
+            Use the slider or arrow keys to move through axial slices.
+          </small>
+        </section>
+
+        <section class="control-panel" aria-labelledby="display-heading">
+          <div class="panel-heading compact">
+            <span class="panel-number" aria-hidden="true">03</span>
+            <div>
+              <h2 id="display-heading">Display</h2>
+              <p>Tune contrast and overlays for the active volume.</p>
+            </div>
+          </div>
+
+          <label class="field" for="colormap">
+            <span>Colour map</span>
+            <select id="colormap">
+              <option value="gray" selected>Gray</option>
+              <option value="viridis">Viridis</option>
+              <option value="hot">Hot</option>
+              <option value="plasma">Plasma</option>
+              <option value="turbo">Turbo</option>
+            </select>
+          </label>
+
+          <button id="autoContrast" class="secondary-button" type="button" disabled>
+            Auto contrast
+          </button>
+
+          <label class="slider-field" for="windowLevel">
+            <span>Window level</span>
+            <input
+              id="windowLevel"
+              type="range"
+              min="0"
+              max="65535"
+              step="1"
+              value="3250"
+              aria-description="Moves the visible intensity window brighter or darker"
+            />
+            <output id="windowLevelValue" for="windowLevel">3,250</output>
+          </label>
+
+          <label class="slider-field" for="windowWidth">
+            <span>Window width</span>
+            <input
+              id="windowWidth"
+              type="range"
+              min="1"
+              max="65535"
+              step="1"
+              value="6500"
+              aria-description="Narrows or widens the contrast window"
+            />
+            <output id="windowWidthValue" for="windowWidth">6,500</output>
+          </label>
+
+          <div
+            class="window-range-field"
+            role="group"
+            aria-labelledby="windowRangeLabel"
+          >
+            <div class="window-range-heading">
+              <span id="windowRangeLabel">Visible min–max</span>
+              <output id="windowRangeValue" aria-live="polite">0–6,500</output>
+            </div>
+            <div class="dual-range" id="windowRangeTrack">
+              <input
+                id="windowMin"
+                type="range"
+                min="0"
+                max="65535"
+                step="1"
+                value="0"
+                aria-label="Visible minimum"
+              />
+              <input
+                id="windowMax"
+                type="range"
+                min="0"
+                max="65535"
+                step="1"
+                value="6500"
+                aria-label="Visible maximum"
+              />
+            </div>
+          </div>
+
+          <div class="toggle-grid">
+            <label><input id="showCrosshair" type="checkbox" checked /> Crosshair</label>
+            <label><input id="showScaleBar" type="checkbox" checked /> Scale bar</label>
+          </div>
+        </section>
+
+        <section class="control-panel" aria-labelledby="tools-heading">
+          <div class="panel-heading compact">
+            <span class="panel-number" aria-hidden="true">04</span>
+            <div>
+              <h2 id="tools-heading">Measure &amp; export</h2>
+              <p>Measure in slice views or save the current volume crop.</p>
+            </div>
+          </div>
+
+          <div class="field pointer-tool-field">
+            <span>Pointer tool</span>
+            <button
+              id="interactionTool"
+              class="pointer-tool-button"
+              type="button"
+              aria-pressed="false"
+            >Measure distance</button>
+          </div>
+          <div class="inline-status">
+            <output id="measurementStatus" role="status" aria-live="polite">Crosshair movement active</output>
+            <button id="clearMeasurements" type="button" disabled>Clear</button>
+          </div>
+
+          <label class="field" for="niftiLevel">
+            <span>NIfTI resolution</span>
+            <select id="niftiLevel" disabled>
+              <option value="current" selected>Current displayed level</option>
+            </select>
+          </label>
+          <output
+            id="niftiEstimate"
+            class="nifti-estimate"
+            for="niftiLevel"
+            aria-live="polite"
+          >Load a volume to estimate the export.</output>
+          <button class="secondary-button" id="downloadNifti" type="button" disabled>
+            Download NIfTI
+          </button>
+          <div id="niftiProgress" class="nifti-progress" hidden>
+            <progress id="niftiProgressBar" max="1" value="0"></progress>
+            <div class="nifti-progress-detail">
+              <output
+                id="niftiProgressText"
+                for="niftiProgressBar"
+                role="status"
+                aria-live="polite"
+              >Preparing export…</output>
+              <button
+                id="cancelNifti"
+                class="nifti-cancel"
+                type="button"
+                disabled
+              >Cancel</button>
+            </div>
+          </div>
+          <button class="secondary-button" id="createShareLink" type="button">
+            Create share link
+          </button>
+          <input
+            id="shareLink"
+            type="url"
+            aria-label="Share link"
+            readonly
+            hidden
+          />
+          <output id="shareStatus" class="download-status" role="status" aria-live="polite" hidden></output>
+          <output id="downloadStatus" class="download-status" role="status" aria-live="polite" hidden></output>
+        </section>
+
+        <details class="control-panel advanced-panel">
+          <summary>Advanced</summary>
+          <div class="advanced-controls">
+            <label class="slider-field" for="scrollZoomSpeed">
+              <span>Scroll zoom speed</span>
+              <input
+                id="scrollZoomSpeed"
+                type="range"
+                min="0.25"
+                max="10"
+                step="0.25"
+                value="5"
+                aria-describedby="scrollZoomSpeedValue"
+              />
+              <output id="scrollZoomSpeedValue" for="scrollZoomSpeed">5×</output>
+            </label>
+
+            <label class="slider-field" for="detailBudget">
+              <span>Detail budget</span>
+              <input
+                id="detailBudget"
+                type="range"
+                min="0.5"
+                max="8"
+                step="0.5"
+                value="8"
+                aria-describedby="detailBudgetValue detailBudgetHelp"
+              />
+              <output id="detailBudgetValue" for="detailBudget">8 GiB</output>
+            </label>
+            <small class="zoom-level-help" id="detailBudgetHelp">
+              Higher values allow finer FOV tiles. GPU residency remains capped at 512 MiB.
+            </small>
+
+            <div class="toggle-grid">
+              <label><input id="showStats" type="checkbox" /> Stream details</label>
+            </div>
+          </div>
+        </details>
+      </aside>
+
+      <main id="viewer" aria-label="OME-Zarr volume viewer">
+        <canvas id="nv-canvas" aria-label="Interactive streamed volume" tabindex="0"></canvas>
+        <section
+          id="nvslideView"
+          class="nvslide-view"
+          aria-label="NVSlide orthogonal viewer"
+          hidden
+        >
+          <article class="nvslide-pane nvslide-pane-main" data-plane="axial">
+            <canvas class="nvslide-canvas" aria-label="Interactive axial NVSlide plane" tabindex="0"></canvas>
+            <div class="nvslide-crosshair" aria-hidden="true">
+              <span class="nvslide-crosshair-vertical"></span>
+              <span class="nvslide-crosshair-horizontal"></span>
+            </div>
+            <svg class="nvslide-measurements" aria-hidden="true"></svg>
+            <div class="nvslide-scale-bar" aria-hidden="true" hidden>
+              <span class="nvslide-scale-bar-line"></span>
+              <span class="nvslide-scale-bar-label"></span>
+            </div>
+            <output
+              class="nvslide-pane-loading"
+              aria-live="polite"
+              hidden
+            ></output>
+            <output class="nvslide-pane-status" aria-live="polite"></output>
+          </article>
+          <article class="nvslide-pane" data-plane="sagittal">
+            <canvas class="nvslide-canvas" aria-label="Interactive sagittal NVSlide plane" tabindex="0"></canvas>
+            <div class="nvslide-crosshair" aria-hidden="true">
+              <span class="nvslide-crosshair-vertical"></span>
+              <span class="nvslide-crosshair-horizontal"></span>
+            </div>
+            <svg class="nvslide-measurements" aria-hidden="true"></svg>
+            <div class="nvslide-scale-bar" aria-hidden="true" hidden>
+              <span class="nvslide-scale-bar-line"></span>
+              <span class="nvslide-scale-bar-label"></span>
+            </div>
+            <output
+              class="nvslide-pane-loading"
+              aria-live="polite"
+              hidden
+            ></output>
+            <output class="nvslide-pane-status" aria-live="polite"></output>
+          </article>
+          <article class="nvslide-pane" data-plane="coronal">
+            <canvas class="nvslide-canvas" aria-label="Interactive coronal NVSlide plane" tabindex="0"></canvas>
+            <div class="nvslide-crosshair" aria-hidden="true">
+              <span class="nvslide-crosshair-vertical"></span>
+              <span class="nvslide-crosshair-horizontal"></span>
+            </div>
+            <svg class="nvslide-measurements" aria-hidden="true"></svg>
+            <div class="nvslide-scale-bar" aria-hidden="true" hidden>
+              <span class="nvslide-scale-bar-line"></span>
+              <span class="nvslide-scale-bar-label"></span>
+            </div>
+            <output
+              class="nvslide-pane-loading"
+              aria-live="polite"
+              hidden
+            ></output>
+            <output class="nvslide-pane-status" aria-live="polite"></output>
+          </article>
+        </section>
+        <svg
+          id="crosshairOverlay"
+          class="crosshair-overlay"
+          aria-hidden="true"
+          preserveAspectRatio="none"
+          hidden
+        >
+          <path id="crosshairOutline" class="crosshair-outline" vector-effect="non-scaling-stroke"></path>
+          <path id="crosshairLines" class="crosshair-lines" vector-effect="non-scaling-stroke"></path>
+        </svg>
+        <div id="scaleIndicators" class="scale-indicators" hidden>
+          <output
+            id="visibleLevel"
+            class="visible-level"
+            aria-label="Currently displayed Zarr level"
+            hidden
+          ></output>
+          <output
+            id="tileLoading"
+            class="visible-level tile-loading"
+            aria-label="Tiles currently loading"
+            aria-live="polite"
+          >0 tiles loading</output>
+        </div>
+        <div class="hud" id="hud" hidden aria-hidden="true">Loading…</div>
+        <div class="strip" id="chunkStrip" hidden aria-hidden="true"></div>
+        <div class="fallback" id="fallback" aria-hidden="true"></div>
+      </main>
+
+      <footer id="status" hidden></footer>
+    </div>
+    <script type="module" src="/src/viewer.ts"></script>
+  </body>
+</html>

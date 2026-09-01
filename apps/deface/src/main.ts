@@ -17,9 +17,9 @@ import NiiVueGPU, {
   SLICE_TYPE,
 } from '@niivue/niivue'
 import { mountImagingWorkspace } from '@neurodesk/webapp-components/core/mount-imaging-workspace'
-import '@neurodesk/webapp-components/styles/base.css'
-import { runDcm2niix, traverseDataTransferItems } from './dcm2niix/index'
-import { Niimath } from './niimath'
+import '@neurodesk/webapp-components/styles/imaging-workspace.css'
+import { runDcm2niix, traverseDataTransferItems } from '@neurodesk/runtime-support/dcm2niix-client'
+import { Niimath } from '@neurodesk/runtime-support/niimath'
 import type { MindgrabInferer } from './mindgrab/index'
 
 const ASSET_BASE_URL =
@@ -35,6 +35,7 @@ mountImagingWorkspace({
   title: 'Deface',
   subtitle: 'Privacy-preserving MRI defacing in your browser',
   mark: 'D',
+  controlsContract: { about: '#aboutBtn' },
 })
 
 function $<T extends HTMLElement>(id: string): T {

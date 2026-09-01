@@ -32,20 +32,20 @@ Common issues it catches:
 - `web/js/app/config.js` — Model config, version (bumped by the manual release workflow)
 - `web/js/app/sct-tasks.js` — SCT stable task inventory and task status helpers
 - `web/js/app/labels.js` — Task labels + NiiVue colormap
-- `web/js/inference-worker.js` — Web Worker running the 3D inference pipeline (~700 lines, uses `importScripts`, not ES modules)
-- `web/js/controllers/` — FileIO, DICOM, Inference, Viewer controllers
+- `web/js/inference-worker.js` runs the 3D inference pipeline as a module worker and uses the shared worker toolkit for routing, model fetches, and common volume operations.
+- `web/js/controllers/` contains narrow input-session and pipeline adapters around shared file-IO, DICOM, `PipelineExecutor`, and `ViewerController` modules.
 - `web/js/modules/` — UI components and inference pipeline modules
 
 ## Key Conventions
 
-- The inference worker uses `importScripts()` (no ES modules)
+- Keep the inference worker as an ES module. Add reusable transport, file, and volume behavior to `@neurodesk/webapp-components`; keep SCT model and post-processing policy in the app.
 - `ViewerController` owns NiiVue overlay lifecycle; keep segmentation as one managed overlay volume, and use segmentation-as-base mode when the input volume is hidden because NiiVue volume 0 is not a reliable hide target.
 - The app must continue to initialize when NiiVue cannot create a viewer context. Let `nv.attachTo('gl1')` be the source of truth instead of adding a separate off-DOM WebGL2 preflight, but after a resolved attach also assert `this.nv.gl` is present before marking the viewer available — niivue 0.68.2 throws on WebGL2 failure, and the `gl` check is belt-and-braces against a future niivue that logs-and-returns instead. Keep NiiVue/viewer controls disabled through `disableViewer()`/`isViewerAvailable()` in fallback mode, and leave file loading, inference, result generation, metrics, and result downloads usable. The viewer-unavailable message (`SpinalCordToolboxApp.VIEWER_UNAVAILABLE_GUIDANCE`, mirrored in the `#viewerUnavailableMessage` static HTML) must name WebGL2 as the cause and the hardware-acceleration/`chrome://gpu` remedy, not just say "could not initialize". `npm run test:ui` covers control/source presence and `npm run test:compat` behaviorally exercises the `attachTo`-rejects/no-GL-context → `disableViewer()` catch path plus the actionable message (`scripts/test_viewer_fallback.mjs`).
 - When NiiVue is unavailable, `FallbackNiftiPreview` renders a 2D axial NIfTI slice on `fallbackCanvas2d` using the vendored `nifti-js/index.js` parser. Keep result eye buttons usable in this mode by routing them through `viewStage()`, but do not emulate NiiVue overlay composition in the fallback. `npm run test:ui:modules` covers the fallback decoder/renderer.
 - Keep `.viewer-unavailable-message[hidden]` explicitly hidden in CSS. The fallback message is absolutely positioned over the canvas, and the base `.viewer-unavailable-message` display rule otherwise overrides the hidden attribute and paints the error text over a working NiiVue viewer. `npm run test:ui` covers this.
 - `web/coi-serviceworker.js` must always resolve fetch events with a `Response`, including third-party analytics/CORS failures, and must reconstruct 204/205/304 responses with a null body. `npm run test:compat` covers the Chrome Response-constructor regressions.
 - Route input/segmentation visibility changes through `renderViewerVolumes()` so the Results eye buttons and toolbar input toggle rebuild a consistent NiiVue volume stack.
-- Multi-image comparison keeps one active input session for SCT processing while `Compare` view displays loaded input sessions as independent NiiVue canvases for side-by-side review. Keep `FileIOController` session activation, `ViewerController.loadComparisonVolumes()`, the viewer mode toolbar, and `scripts/test_ui_coverage.cjs` synchronized; result overlays remain single-session only and `npm run test:viewer`, `npm run test:controllers`, and `npm run test:ui` cover the contract.
+- Multi-image comparison keeps one active input session for SCT processing while `Compare` view displays loaded input sessions as independent NiiVue canvases for side-by-side review. Keep `SctInputSessions` session activation, `ViewerController.loadComparisonVolumes()`, the viewer mode toolbar, and `scripts/test_ui_coverage.cjs` synchronized; result overlays remain single-session only and `npm run test:viewer`, `npm run test:controllers`, and `npm run test:ui` cover the contract.
 - Config version is bumped by the manual GitHub Actions release workflow via `sed`; it increments the patch version — do not bump manually
 - Keep model availability metadata internal; user-facing UI copy should describe runnable tasks without release/support commentary.
 - Keep the Citations modal primary SpinalCordToolbox entry anchored on the De Leener et al. NeuroImage 2017 SCT paper and the stable documentation link.
@@ -102,7 +102,7 @@ Common issues it catches:
 | `npm run test:fixtures` | Dice + foreground-ratio gates for segmentation fixtures, multilabel vertebrae parity, SCIsegV2 `_sc_seg`/`_lesion_seg` parity on SCT `t2_fake_lesion`, and lesion-metrics fixture tolerances; downloads missing SCT batch references from Hugging Face and SCT testing data and generates missing/stale browser outputs with real ONNX inference |
 | `npm run test:fixtures:download` | Downloads `test_data/batch_processing.sh` plus fixture `input.nii.gz` and `batch_output.nii.gz` files from Hugging Face |
 | `npm run test:fixtures:generate` | Regenerates `browser_output.nii.gz` by running real ONNX inference (Node-only, no browser) |
-| `npm run test:controllers` | `FileIOController`, `DicomController`, `InferenceExecutor` against fake DOM/Worker |
+| `npm run test:controllers` | `SctInputSessions`, the shared DICOM input adapter, and the shared `PipelineExecutor` adapter against fake DOM and Worker implementations |
 | `npm run test:ui:modules` | `ProgressManager`, `ConsoleOutput`, `ModalManager`, and fallback NIfTI preview against fake DOM |
 | `npm run test:ci-summary` | Full-test workflow log summarizer used to publish failed npm script/test details in GitHub Actions summaries |
 | `npm run test:inference:e2e` | Inference worker driven via VM shim against 3 fixtures with real ONNX Runtime (slow) |

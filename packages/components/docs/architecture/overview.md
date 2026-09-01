@@ -22,15 +22,15 @@ This track comes from QSMbly.
 
 1. `FileIOController` runs in bucketed mode with `magnitude`, `phase`, `totalField`, `localField`, `json`, `mask`, and `extra`.
 2. A `PipelineDefinition` selects stages based on input mode.
-3. Settings are collected by the app or plugin panels.
+3. Settings are collected by app-owned panels.
 4. `PipelineExecutor` calls a Rust/WASM or ONNX worker.
-5. `CommandPreview` can render equivalent CLI commands through a plugin hook.
+5. `CommandPreview` can render equivalent CLI commands through the pipeline's command generator.
 6. Optional validation reports, such as DiCompare/QSM guideline output, render through `DicompareReportRenderer`.
 
 ## Runtime Constraints
 
 - Static hosting is assumed.
 - Use COOP/COEP headers when workers need `SharedArrayBuffer` or threaded WASM.
-- Core modules do not own scientific defaults; plugins or apps do.
+- Core modules do not own scientific defaults; apps do.
 - Model and WASM files remain app assets, not package assets.
 - NIfTI arrays use x-fastest flat indexing: `x + y * nx + z * nx * ny`.

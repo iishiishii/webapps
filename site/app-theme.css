@@ -93,32 +93,8 @@
   --nd-color-primary-glow: rgb(106 163 41 / 18%);
 }
 
-/* Most apps use complete CSS colors. Dicompare uses RGB triplets and has a
-   separate adapter below, so it must be excluded from this token family. */
-:root[data-neurodesk-app]:not([data-neurodesk-app="dicompare"]) {
-  --color-bg: var(--nd-brand-pale);
-  --color-surface: var(--nd-brand-surface);
-  --color-surface-elevated: var(--nd-brand-unselected);
-  --color-border: var(--nd-brand-border);
-  --color-border-light: var(--nd-brand-border-strong);
-  --color-text: var(--nd-brand-text);
-  --color-text-muted: var(--nd-brand-text-muted);
-  --color-text-dim: var(--nd-brand-text-dim);
-  --color-primary: var(--nd-brand-primary);
-  --color-primary-hover: var(--nd-brand-hover);
-  --color-primary-glow: rgb(145 200 74 / 18%);
-  --color-success: var(--nd-brand-success);
-  --color-success-bg: rgb(63 91 46 / 45%);
-  --color-accent: var(--nd-brand-selected);
-}
-
-:root[data-neurodesk-app][data-neurodesk-theme="light"]:not([data-neurodesk-app="dicompare"]) {
-  --color-primary-glow: rgb(106 163 41 / 18%);
-  --color-success-bg: rgb(240 247 231 / 90%);
-}
-
 /* Dicompare's Tailwind theme consumes raw RGB triplets. */
-:root[data-neurodesk-app="dicompare"] {
+:root[data-neurodesk-shell="react"] {
   color-scheme: dark;
   --color-surface: 10 12 8;
   --color-surface-primary: 22 26 14;
@@ -139,7 +115,7 @@
   --color-brand-700: 45 66 34;
 }
 
-:root[data-neurodesk-app="dicompare"][data-neurodesk-theme="light"] {
+:root[data-neurodesk-shell="react"][data-neurodesk-theme="light"] {
   color-scheme: light;
   --color-surface: 240 247 231;
   --color-surface-primary: 255 255 255;
@@ -160,9 +136,9 @@
   --color-brand-700: 22 28 16;
 }
 
-/* SurfAnnotate predates the shared surface/text tokens and names its light
-   surface token "white". Bridge those legacy roles into the dark palette. */
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"] {
+/* Older non-React apps use light-palette role names for surfaces and text.
+   Bridge those roles for every hosted shell that still consumes them. */
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) {
   --nd-brand-white: var(--nd-brand-surface);
   --nd-ink-muted: var(--nd-brand-text-muted);
   --nd-line-neutral: var(--nd-brand-border);
@@ -184,71 +160,71 @@
   color: var(--nd-brand-text-dim);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"]
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"])
   :is(.start-page, .nd-imaging-workspace, #controls, .workflow-panel, #status, .cite-dialog) {
   color: var(--nd-brand-text);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"]
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"])
   :is(.start-kicker, .start-how > h3, .panel-step, .workflow-help summary, .readout) {
   color: var(--nd-brand-primary);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"]
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"])
   :is(.start-hero h2, .start-step h4, .panel-heading h2, .row, .check, .instruction-note, .hint strong, .layer-list li, .point-list) {
   color: var(--nd-brand-text);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"] .start-intro {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) .start-intro {
   color: var(--nd-brand-text-muted);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"]
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"])
   :is(.start-local-badge, .start-local-panel) {
   color: var(--nd-brand-text-muted);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"]
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"])
   :is(.workflow-help, .layer-list li, .start-footer) {
   color: var(--nd-brand-text-muted);
   background: var(--nd-brand-pale);
   border-color: var(--nd-brand-border);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"] #controls
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls
   :is(select, input[type="text"], input[type="number"]) {
   color: var(--nd-brand-text);
   background: var(--nd-brand-unselected);
   border-color: var(--nd-brand-border);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"] #controls button {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls button {
   color: var(--nd-brand-text);
   background: var(--nd-brand-pale);
   border-color: var(--nd-brand-border);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"] #controls
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls
   :is(button, select, input):disabled {
   color: var(--nd-brand-text-dim);
   background: var(--nd-brand-unselected);
   border-color: var(--nd-brand-border);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"] #controls
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls
   input:disabled:not([type="checkbox"]):not([type="range"]):not([type="file"]) {
   color: var(--nd-brand-text-dim);
   background: var(--nd-brand-unselected);
   border-color: var(--nd-brand-border);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"] #controls button.primary {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls button.primary {
   color: var(--nd-brand-action-text);
   background: var(--nd-brand-primary);
   border-color: var(--nd-brand-primary);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"] #controls .segmented button.active {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls .segmented button.active {
   color: var(--nd-brand-menu-text);
   background: var(--nd-brand-selected);
   border-color: var(--nd-brand-selected);
@@ -256,50 +232,50 @@
 
 /* SurfAnnotate's file input is visually represented by its adjacent label.
    Theme the visible control itself, including the disabled overlay state. */
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"] .upload-visual {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) .upload-visual {
   color: var(--nd-brand-text);
   background: var(--nd-brand-pale);
   border-color: var(--nd-brand-primary);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"] .upload-visual > svg {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) .upload-visual > svg {
   color: var(--nd-brand-primary);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"] .upload-action {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) .upload-action {
   color: var(--nd-brand-action-text);
   background: var(--nd-brand-primary);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"] #controls
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls
   .upload-field > input:disabled + .upload-visual {
   color: var(--nd-brand-text-dim);
   background: var(--nd-brand-unselected);
   border-color: var(--nd-brand-border-strong);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"] #controls
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls
   .upload-field > input:disabled + .upload-visual :is(svg, small) {
   color: var(--nd-brand-text-dim);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"] #controls
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) #controls
   .upload-field > input:disabled + .upload-visual .upload-action {
   color: var(--nd-brand-text-dim);
   background: var(--nd-brand-pale);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"]
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"])
   :is(.drop-hint strong, .start-step-number) {
   color: var(--nd-brand-text);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"]
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"])
   :is(.start-footer a, .cite-section h4, .cite-item a, .cite-close) {
   color: var(--nd-brand-light);
 }
 
-:root[data-neurodesk-app="surfannotate"][data-neurodesk-theme="dark"] .cite-close:hover {
+:root[data-neurodesk-app][data-neurodesk-theme="dark"]:not([data-neurodesk-shell="react"]) .cite-close:hover {
   color: var(--nd-brand-action-text);
 }
 
@@ -324,9 +300,6 @@
 /* Local token overrides keep all header copy and icons readable without
    changing the apps' existing markup. */
 [data-neurodesk-app] :is(.app-header, .start-header, .nd-imaging-app-header) {
-  --color-text: var(--nd-brand-menu-text);
-  --color-text-muted: var(--nd-brand-light);
-  --color-text-dim: var(--nd-brand-hover);
   --nd-color-text: var(--nd-brand-menu-text);
   --nd-color-text-muted: var(--nd-brand-light);
   --nd-color-text-dim: var(--nd-brand-hover);
@@ -341,22 +314,22 @@
 
 /* Bright green is an action fill; lighter green remains readable as dark-theme
    link text. */
-:root[data-neurodesk-app]:not([data-neurodesk-app="dicompare"])
+:root[data-neurodesk-app]:not([data-neurodesk-shell="react"])
   :is(.modal-body a, .modal-body h4) {
   color: var(--nd-brand-light);
 }
 
-:root[data-neurodesk-app]:not([data-neurodesk-app="dicompare"])
+:root[data-neurodesk-app]:not([data-neurodesk-shell="react"])
   :is(.about-highlight, .privacy-highlight, .citation-primary) {
   background: var(--nd-brand-pale);
 }
 
-:root[data-neurodesk-app]:not([data-neurodesk-app="dicompare"])
+:root[data-neurodesk-app]:not([data-neurodesk-shell="react"])
   :is(.about-highlight strong, .privacy-highlight strong, .citation-primary strong) {
   color: var(--nd-brand-light);
 }
 
-:root[data-neurodesk-app][data-neurodesk-theme="light"]:not([data-neurodesk-app="dicompare"])
+:root[data-neurodesk-app][data-neurodesk-theme="light"]:not([data-neurodesk-shell="react"])
   :is(.modal-body a, .modal-body h4, .about-highlight strong, .privacy-highlight strong, .citation-primary strong) {
   color: var(--nd-brand-selected);
 }
@@ -398,13 +371,6 @@
 /* Consoles remain subordinate to the viewer with the deepest surface and a
    thin green divider. */
 [data-neurodesk-app] :is(.console-container, .nd-console-container) {
-  --color-surface: var(--nd-brand-console-surface);
-  --color-border: var(--nd-brand-border);
-  --color-text: var(--nd-brand-console-text);
-  --color-text-muted: var(--nd-brand-console-text);
-  --color-text-dim: var(--nd-brand-console-time);
-  --color-error: #ff8a80;
-  --color-warning: #f0c777;
   --nd-color-surface: var(--nd-brand-console-surface);
   --nd-color-border: var(--nd-brand-border);
   --nd-color-text: var(--nd-brand-console-text);
@@ -429,8 +395,6 @@
 
 :root[data-neurodesk-app][data-neurodesk-theme="light"]
   :is(.console-container, .nd-console-container) {
-  --color-error: #b42318;
-  --color-warning: #7a4b00;
   --nd-color-error: #b42318;
   --nd-color-warning: #7a4b00;
 }
@@ -606,13 +570,6 @@
   z-index: 1 !important;
   flex: 0 0 auto !important;
   border-bottom: 2px solid var(--nd-brand-primary) !important;
-}
-
-/* QSMbly keeps its app-specific launch and QSMxT links below the shared bar;
-   hide only the two navigation links now supplied by the common chrome. */
-:root[data-neurodesk-app="qsmbly"] #landingPage .landing-nav-links
-  :is(a[href="../"], a[href="https://github.com/neurodesk/webapps/tree/main/apps/qsmbly"]) {
-  display: none !important;
 }
 
 .nd-app-utility-bar {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node --no-warnings
 
 import assert from 'node:assert/strict';
-import { PipelineGraph } from '../web/js/modules/pipeline/PipelineGraph.js';
+import { StepPipelineState as PipelineGraph } from '@neurodesk/webapp-components/pipeline';
 
 function fakeFile(name) {
   return { name };

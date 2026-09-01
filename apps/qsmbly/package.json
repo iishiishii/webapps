@@ -1,13 +1,17 @@
 {
   "name": "qsmbly",
-  "version": "0.23.1",
+  "version": "0.23.3",
   "description": "Quantitative Susceptibility Mapping in WebAssembly",
   "type": "module",
   "scripts": {
     "dev": "python3 -m http.server 8080",
-    "prebuild": "bash build.sh",
+    "vendor": "node ../../scripts/vendor-components.mjs --dest .",
+    "runtime-support": "node ../../scripts/vendor-runtime-support.mjs --dest .",
+    "predev": "pnpm vendor && pnpm runtime-support",
+    "prebuild": "pnpm vendor && pnpm runtime-support && bash build.sh",
     "build": "node ../../scripts/build-static.mjs",
     "lint": "node ../../scripts/check-app-js.mjs .",
+    "pretest": "pnpm vendor && pnpm runtime-support",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"
@@ -25,6 +29,7 @@
         "index.html",
         "css",
         "js",
+        "vendor",
         "dcm2niix",
         "nifti-js",
         "niivue",

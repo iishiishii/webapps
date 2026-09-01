@@ -1,7 +1,7 @@
 #!/usr/bin/env node --no-warnings
 
 import assert from 'node:assert/strict';
-import { ViewerController } from '../web/js/controllers/ViewerController.js';
+import { VesselBoostViewer as ViewerController } from '../web/js/controllers/VesselBoostViewer.js';
 import { analysisVolumeSpace, tagSpatialFile } from '../web/js/modules/spatial-file.js';
 
 globalThis.URL = {

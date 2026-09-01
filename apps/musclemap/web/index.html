@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MuscleMap - Whole-Body Muscle Segmentation</title>
   <link rel="icon" type="image/png" href="img/musclemap-favicon.png" sizes="64x64">
+  <link rel="stylesheet" href="vendor/webapp-components/src/styles/inference-workspace.css">
   <link rel="stylesheet" href="css/styles.css">
   <!-- Resolve shared @neurodesk/webapp-components (workspace package) for the browser without a
        bundler. Files are vendored into web/vendor/ by `pnpm --filter musclemap vendor` (prebuild).
-       This keeps the classic importScripts inference worker and relative asset paths untouched. -->
+       The module worker and its shared toolkit continue to use relative asset paths. -->
   <script type="importmap">
   {
     "imports": {
@@ -29,6 +30,10 @@
       <span>Whole-Body Muscle Segmentation</span>
     </div>
     <div class="start-links">
+      <button class="header-link" type="button" title="About" onclick="document.getElementById('aboutButton').click()">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span>About</span>
+      </button>
       <button class="header-link" id="startPrivacyButton" type="button" title="Privacy">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         <span>Privacy</span>
@@ -51,11 +56,11 @@
   <main class="start-main">
     <section class="start-hero">
       <div class="start-hero-copy">
-        <p class="start-kicker">MRI muscle segmentation in the browser</p>
-        <h2>Segment whole-body muscle MRI locally in your browser.</h2>
+        <p class="start-kicker">MRI muscle segmentation and metrics in the browser</p>
+        <h2>Segment scans or analyze existing MuscleMap labels locally.</h2>
         <p class="start-intro">
           MuscleMap loads NIfTI or DICOM data, runs MONAI-based segmentation with ONNX Runtime Web,
-          and displays downloadable muscle-label maps without sending patient data to a server.
+          or calculates statistics from an existing segmentation without sending patient data to a server.
         </p>
         <div class="start-actions">
           <button class="btn btn-primary start-primary" id="enterAppButton" type="button">Start analysis</button>
@@ -85,15 +90,15 @@
           <div class="start-step-icon">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
           </div>
-          <h4>1. Load MRI data</h4>
-          <p>Choose a NIfTI image or DICOM folder. Loading displays the scan; segmentation starts only when you run it.</p>
+          <h4>1. Load images or labels</h4>
+          <p>Choose a NIfTI image, segmentation NIfTI, or DICOM folder. Existing label maps can be analyzed without running inference.</p>
         </article>
         <article class="start-step">
           <div class="start-step-icon">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3"/><path d="M12 18v3"/><path d="M3 12h3"/><path d="M18 12h3"/><path d="m5.6 5.6 2.1 2.1"/><path d="m16.3 16.3 2.1 2.1"/><path d="m18.4 5.6-2.1 2.1"/><path d="m7.7 16.3-2.1 2.1"/></svg>
           </div>
-          <h4>2. Run segmentation</h4>
-          <p>Select the body-region model and quality settings, then run browser-side inference and cleanup.</p>
+          <h4>2. Segment or calculate</h4>
+          <p>Run browser-side inference, or select the label-space release and calculate metrics directly from an uploaded segmentation.</p>
         </article>
         <article class="start-step">
           <div class="start-step-icon">
@@ -117,15 +122,15 @@
       <span class="version" id="appVersion"></span>
     </div>
     <div class="header-links">
-      <button class="header-link" id="aboutButton" title="About">
+      <button class="header-link" id="aboutButton" data-neurodesk-control="about" title="About">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
         <span>About</span>
       </button>
-      <button class="header-link" id="citationsButton" title="Citations">
+      <button class="header-link" id="citationsButton" data-neurodesk-control="cite" title="Citations">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         <span>Cite</span>
       </button>
-      <button class="header-link" id="privacyButton" title="Privacy">
+      <button class="header-link" id="privacyButton" data-neurodesk-control="privacy" title="Privacy">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         <span>Privacy</span>
       </button>
@@ -180,19 +185,13 @@
           <!-- Model -->
           <div class="param-group">
             <label class="param-label" for="modelSelect">Model</label>
-            <select id="modelSelect">
-              <option value="musclemap-wholebody.onnx" selected>Whole Body (99 muscles)</option>
-              <option value="musclemap-abdomen.onnx">Abdomen (8 muscles)</option>
-              <option value="musclemap-forearm.onnx">Forearm (5 structures)</option>
-              <option value="musclemap-leg.onnx">Leg (14 structures)</option>
-              <option value="musclemap-pelvis.onnx">Pelvis (13 structures)</option>
-              <option value="musclemap-thigh.onnx">Thigh (28 structures)</option>
-            </select>
+            <select id="modelSelect"></select>
           </div>
           <!-- Overlap -->
           <div class="param-group">
             <label class="param-label" for="overlapSelect">Sliding Window Overlap <span class="info-icon">i<span class="info-tooltip">Higher overlap improves segmentation quality but takes longer. 50% is fast, 90% produces the highest quality.</span></span></label>
             <select id="overlapSelect">
+              <option value="0">0% (Upstream retry setting)</option>
               <option value="0.5" selected>50% (Fast)</option>
               <option value="0.75">75% (Balanced)</option>
               <option value="0.9">90% (High Quality)</option>
@@ -216,13 +215,26 @@
               <option value="8">8</option>
             </select>
           </div>
+          <!-- Source Chunk Size -->
+          <div class="param-group hidden" id="sourceChunkGroup">
+            <label class="param-label" for="sourceChunkSizeSelect">Source Slices per Chunk <span class="info-icon">i<span class="info-tooltip">Preprocesses source-axis chunks independently, matching the upstream MuscleMap command. Use the same value as the reference run for reproducible results.</span></span></label>
+            <select id="sourceChunkSizeSelect">
+              <option value="5">5 (Memory Safe)</option>
+              <option value="17" selected>17</option>
+              <option value="25">25</option>
+              <option value="34">34 (Chest Reference)</option>
+              <option value="43">43 (Neck Reference)</option>
+              <option value="50">50</option>
+              <option value="full">Full Volume</option>
+            </select>
+          </div>
           <!-- Slice Thickness -->
-          <div class="param-group">
+          <div class="param-group" id="sliceThicknessGroup">
             <label class="param-label" for="sliceThickness">Slice Thickness (mm) <span class="info-icon">i<span class="info-tooltip">Z-axis resampling resolution. Defaults to the image's native slice thickness. Increase for faster inference (fewer slices).</span></span></label>
             <input type="number" id="sliceThickness" min="0.1" step="0.1" value="" placeholder="—">
           </div>
           <!-- Low-Res Toggle -->
-          <div class="param-group">
+          <div class="param-group" id="lowResGroup">
             <label class="viewer-checkbox">
               <input type="checkbox" id="lowResToggle">
               <span>Low-Res Mode <span class="info-icon">i<span class="info-tooltip">Runs connected-component cleanup in the cropped working volume before inverse transforms. This is faster and uses less memory, but can slightly reduce final-resolution fidelity. Disabled by default.</span></span></span>
@@ -260,7 +272,7 @@
           </div>
 
           <div class="param-group metrics-controls">
-            <label class="param-label" for="metricsSegmentationSelect">Metrics Segmentation <span class="info-icon">i<span class="info-tooltip">Choose the label map used for volumetric metrics. Consolidate segmentations first if you want metrics on a merged label map.</span></span></label>
+            <label class="param-label" for="metricsSegmentationSelect">Metrics Segmentation <span class="info-icon">i<span class="info-tooltip">Choose the label map used for volumetric metrics. Uploaded maps automatically detect official, browser class-index, and OpenRecon int12 labels. Consolidate first to analyze a merged label map.</span></span></label>
             <select id="metricsSegmentationSelect" disabled></select>
           </div>
 
@@ -326,7 +338,7 @@
         </h2>
         <div class="section-content">
           <div class="stage-buttons-grid" id="stageButtons"></div>
-          <button class="btn btn-secondary btn-sm" id="clearResults" style="width: 100%; margin-top: var(--space-sm);">
+          <button class="btn btn-secondary btn-sm" id="clearResults" style="width: 100%; margin-top: var(--nd-space-sm);">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             Clear All
           </button>
@@ -460,9 +472,9 @@
   <!-- Footer -->
   <footer class="app-footer">
     <span>MuscleMap <span id="footerVersion"></span></span>
-    <span>All processing happens locally in your browser. Patient data is not uploaded.</span>
-    <a href="../" style="color: var(--color-text-dim);">More Neurodesk webapps</a>
-    <a href="https://github.com/neurodesk/webapps/tree/main/apps/musclemap" target="_blank" style="color: var(--color-text-dim);">GitHub</a>
+    <span>Imaging data is processed locally in your browser and is not uploaded.</span>
+    <a href="../" style="color: var(--nd-color-text-dim);">More Neurodesk webapps</a>
+    <a href="https://github.com/neurodesk/webapps/tree/main/apps/musclemap" target="_blank" style="color: var(--nd-color-text-dim);">GitHub</a>
   </footer>
 
 </div>
@@ -489,12 +501,12 @@
         </div>
       </div>
 
-      <p>MuscleMap is a browser-based tool for automatic segmentation of 99 muscles from whole-body MRI using a MONAI 2D UNet model.</p>
+      <p>MuscleMap is a browser-based tool for automatic muscle segmentation from MRI or CT using an official MONAI 2D UNet model.</p>
       <p>All computation runs locally in your browser using ONNX Runtime Web. Patient data is not uploaded to any server.</p>
 
       <h4>Muscle Anatomy Reference</h4>
       <a href="https://github.com/MuscleMap/MuscleMap/blob/main/logo.png" target="_blank" rel="noopener">
-        <img src="img/logo.png" alt="MuscleMap muscle anatomy diagram" style="width: 100%; border-radius: 6px; margin: var(--space-sm) 0;">
+        <img src="img/logo.png" alt="MuscleMap muscle anatomy diagram" style="width: 100%; border-radius: 6px; margin: var(--nd-space-sm) 0;">
       </a>
 
       <h4>Version</h4>
@@ -502,6 +514,18 @@
         <div class="about-version-row">
           <span class="about-version-label">MuscleMap</span>
           <span class="about-version-value" id="aboutAppVersion"></span>
+        </div>
+        <div class="about-version-row">
+          <span class="about-version-label">Selected model</span>
+          <span class="about-version-value" id="aboutModelVersion"></span>
+        </div>
+        <div class="about-version-row">
+          <span class="about-version-label">Structures</span>
+          <span class="about-version-value" id="aboutStructureCount"></span>
+        </div>
+        <div class="about-version-row">
+          <span class="about-version-label">Model DOI</span>
+          <a class="about-version-value" id="aboutModelCitation" target="_blank" rel="noopener"></a>
         </div>
       </div>
     </div>
@@ -517,7 +541,7 @@
     </div>
     <div class="modal-body">
       <div class="privacy-highlight">
-        <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
+        <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="var(--nd-color-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         </svg>
         <div>
@@ -609,7 +633,7 @@ function toggleSection(section) {
 <script src="nifti-js/index.js"></script>
 
 <!-- Main app -->
-<script type="module" src="js/musclemap-app.js?v=1.2.35"></script>
+<script type="module" src="js/musclemap-app.js"></script>
 
 </body>
 </html>

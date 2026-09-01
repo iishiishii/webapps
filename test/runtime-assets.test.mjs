@@ -15,7 +15,7 @@ test('composite site contains one checksum-verified runtime store', async () => 
   }
 });
 
-test('composite app copies no longer contain shared static runtimes', async () => {
+test('only declared app-scoped runtime families remain in composite app copies', async () => {
   const registry = await loadAppsRegistry();
   for (const app of registry.apps) {
     const appDist = join(dist, app.path);
@@ -24,7 +24,19 @@ test('composite app copies no longer contain shared static runtimes', async () =
     await assert.rejects(access(join(appDist, 'vendor', 'webapp-components')));
     try {
       const wasm = await readdir(join(appDist, 'wasm'));
-      assert.deepEqual(wasm.filter((name) => name.startsWith('ort')), [], `${app.id} retains app-local ORT files`);
+      const ortFiles = wasm.filter((name) => name.startsWith('ort')).sort();
+      if (app.app_scoped_runtime_families.includes('ort-web')) {
+        assert.deepEqual(ortFiles, [
+          'ort-wasm-simd-threaded.jsep.mjs',
+          'ort-wasm-simd-threaded.jsep.wasm',
+          'ort-wasm-simd-threaded.mjs',
+          'ort-wasm-simd-threaded.wasm',
+          'ort.webgpu.bundle.min.mjs',
+          'ort.webgpu.min.js',
+        ]);
+      } else {
+        assert.deepEqual(ortFiles, [], `${app.id} retains app-local ORT files`);
+      }
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
     }
@@ -32,15 +44,22 @@ test('composite app copies no longer contain shared static runtimes', async () =
 });
 
 test('composite references shared runtimes from the root store', async () => {
-  const workers = [
-    ['musclemap', 'js/inference-worker.js'],
-    ['vesselboost', 'js/inference-worker.js'],
-    ['sct', 'js/inference-worker.js'],
-    ['calmar', 'js/inference-worker.js'],
-    ['seedseg', 'js/inference-worker.js'],
-  ];
-  for (const [app, file] of workers) {
-    const source = await readFile(join(dist, app, file), 'utf8');
-    assert.match(source, /_runtime\/(?:ort-web|nifti-reader)\//, `${app} worker does not use shared runtime`);
+  const registry = await loadAppsRegistry();
+  let workers = 0;
+  for (const app of registry.apps) {
+    let source;
+    try {
+      source = await readFile(join(dist, app.path, 'js', 'inference-worker.js'), 'utf8');
+    } catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
+    workers += 1;
+    assert.match(source, /_runtime\/(?:ort-web|nifti-reader)\//, `${app.id} worker does not use shared runtime`);
+    if (app.app_scoped_runtime_families.includes('ort-web')) {
+      assert.match(source, /\.\.\/wasm\/ort\.webgpu\.bundle\.min\.mjs/);
+      assert.doesNotMatch(source, /_runtime\/ort-web/);
+    }
   }
+  assert.ok(workers >= 5, `expected at least five composite inference workers, found ${workers}`);
 });

@@ -5,5 +5,5 @@ export * from './viewer/index.js';
 export * from './inference/index.js';
 export * from './pipeline/index.js';
 export * from './volume/index.js';
-export * from './mask/index.js';
-export * from './plugins/index.js';
+export * from './worker/index.js';
+export * from './qsm/index.js';

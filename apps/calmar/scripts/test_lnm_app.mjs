@@ -71,8 +71,8 @@ for (const method of [
 // Imports: must pull in the pieces we expect, and must NOT pull in any of the
 // SCT modules we deleted in Phase 0.
 const requiredImports = [
-  /from\s+['"]\.\/controllers\/FileIOController\.js['"]/,
-  /from\s+['"]\.\/controllers\/ViewerController\.js['"]/,
+  /import\s*\{[^}]*SimpleFileIOController[^}]*\}\s*from\s+['"]@neurodesk\/webapp-components\/file-io['"]/s,
+  /import\s*\{[^}]*ViewerController[^}]*\}\s*from\s+['"]@neurodesk\/webapp-components['"]/s,
   /from\s+['"]\.\/app\/lnm-tasks\.js['"]/,
   /from\s+['"]\.\/app\/lnm-labels\.js['"]/,
   /from\s+['"]\.\/modules\/parcel-overlap\.js['"]/,
@@ -138,13 +138,13 @@ assert.match(src, /loadAtlasFromManifest|fetchAndDecodeAtlas|loadAtlas/,
   'runYeoOverlap must invoke the atlas-loader (no longer a stub)');
 
 // Phase 2a.1.4b: brain-extraction wiring. The orchestrator must spin up an
-// InferenceExecutor, kick a 'run-synthstrip' message via runBrainExtraction,
+// CalmarPipeline, kick a 'run-synthstrip' message via runBrainExtraction,
 // listen for 'brainmask' stageData, render it as an overlay (or store it
 // for download), and offer a NIfTI download via downloadBrainMask.
-assert.match(src, /from\s+['"]\.\/controllers\/InferenceExecutor\.js['"]/,
-  'lnm-app.js must import InferenceExecutor');
-assert.match(src, /new\s+InferenceExecutor\s*\(/,
-  'orchestrator must instantiate InferenceExecutor');
+assert.match(src, /from\s+['"]\.\/controllers\/CalmarPipeline\.js['"]/,
+  'lnm-app.js must import CalmarPipeline');
+assert.match(src, /new\s+CalmarPipeline\s*\(/,
+  'orchestrator must instantiate CalmarPipeline');
 assert.match(src, /\brunSynthStrip\s*\(/,
   'runBrainExtraction must call executor.runSynthStrip(...)');
 assert.match(src, /['"]lnm-synthstrip['"]/,
@@ -229,7 +229,7 @@ assert.match(src, /this\._perfStats\s*=\s*\[\s*\]/,
   'runFullPipeline must reset _perfStats at start');
 assert.match(src, /\[perf\]/,
   'each stage must emit a [perf] line into the console');
-assert.match(src, /technicalConsole\s*=\s*new ConsoleOutput/,
+assert.match(src, /technicalConsole\s*=\s*new CalmarConsoleOutput/,
   'lnm-app.js must keep a separate technical log viewer');
 assert.match(src, /updateDebugOutput\s*\(/,
   'lnm-app.js must route model and processing details to the technical log');

@@ -37,7 +37,7 @@
 - [X] T011 Update `web/js/app/labels.js` to expose task-specific SCT label definitions instead of a single global segmentation label set
 - [X] T012 Update model cache naming and invalidation to use SCT task/model asset keys in `web/js/app/config.js`
 - [X] T013 Update worker inference parameter contract to accept `taskId`, `modelAssetId`, labels, and manifest provenance in `web/js/inference-worker.js`
-- [X] T014 Update `web/js/controllers/InferenceExecutor.js` to pass selected SCT task metadata to the worker
+- [X] T014 Update the inference adapter (now `web/js/controllers/SctPipeline.js`, backed by the shared `PipelineExecutor`) to pass selected SCT task metadata to the worker
 - [X] T015 Confirm no patient-derived data is written to model manifest, cache keys, logs, or telemetry fields in `web/js/app/sct-tasks.js` and `web/js/inference-worker.js`
 - [X] T016 Validate foundational JavaScript syntax with `npm run lint` using `package.json` and `scripts/check-syntax.mjs`
 - [X] T017 Validate model manifest schema failure and success cases with `python scripts/validate_sct_models.py --manifest web/models/manifest.json`
@@ -67,7 +67,7 @@
 - [X] T025 [US1] Update default task selection and model loading in `web/js/app/sct-tasks.js`
 - [X] T026 [US1] Update inference model resolution to use selected SCT model asset from the manifest in `web/js/inference-worker.js`
 - [X] T027 [US1] Update output filename and provenance generation for SCT `spinalcord` downloads in `web/js/spinalcordtoolbox-app.js`
-- [X] T028 [US1] Update overlay colormap registration for SCT spinal cord labels in `web/js/controllers/ViewerController.js`
+- [X] T028 [US1] Update overlay colormap registration for SCT spinal cord labels through the shared `@neurodesk/webapp-components` `ViewerController`
 - [X] T029 [US1] Update primary UI title, model selector copy, run controls, about modal, privacy modal, and footer for SCT `spinalcord` workflow in `web/index.html`
 - [X] T030 [US1] Remove obsolete obsolete ONNX assets from active model references in `web/models/manifest.json`
 - [X] T031 [US1] Run `python scripts/download_sct_models.py --stable --task spinalcord --output .tmp_sct_models`

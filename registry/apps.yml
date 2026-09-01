@@ -31,14 +31,17 @@ apps:
     runtime: static-esm
     model_manifest: models/musclemap.manifest.json
     asset_manifest_schema: scientific-assets-v1
+    artifact_budget_bytes: 160000000
     source: neurodesk/musclemap-webapp@8b5012b488bdf7727001c92b79eae826366ec1f0
     license: MIT
     maintainers: [neurodesk]
     support_status: active
     shell: static-html
+    app_scoped_runtime_families: [ort-web]
     ci:
       toolchains: [node]
       shared_runtime: true
+      browser_test: true
       release: true
   - id: vesselboost
     path: vesselboost
@@ -58,6 +61,7 @@ apps:
     ci:
       toolchains: [node, rust-wasm]
       shared_runtime: true
+      browser_test: true
       release: true
   - id: spinalcordtoolbox
     path: sct
@@ -77,6 +81,7 @@ apps:
     ci:
       toolchains: [node]
       shared_runtime: true
+      browser_test: true
       release: true
       release_test: test:release
   - id: calmar
@@ -97,6 +102,7 @@ apps:
     ci:
       toolchains: [node]
       shared_runtime: true
+      browser_test: true
       release: true
   - id: qsmbly
     path: qsmbly
@@ -115,7 +121,7 @@ apps:
     shell: static-html
     ci:
       toolchains: [node, rust-wasm]
-      shared_runtime: false
+      shared_runtime: true
       release: true
   - id: seedseg
     path: seedseg
@@ -134,7 +140,7 @@ apps:
     shell: static-html
     ci:
       toolchains: [node]
-      shared_runtime: false
+      shared_runtime: true
       release: true
   - id: dicompare
     path: dicompare
@@ -173,6 +179,7 @@ apps:
     ci:
       toolchains: [node]
       shared_runtime: false
+      browser_test: true
       release: true
   - id: easy-mp2rage
     path: easy-mp2rage
@@ -230,6 +237,7 @@ apps:
     ci:
       toolchains: [node, python-reference]
       shared_runtime: false
+      browser_test: true
       release: true
   - id: browserqc
     path: browserqc
@@ -248,7 +256,8 @@ apps:
     shell: imaging-workspace
     ci:
       toolchains: [node]
-      shared_runtime: true
+      shared_runtime: false
+      browser_test: true
       release: true
   - id: surfannotate
     path: surfannotate
@@ -260,17 +269,18 @@ apps:
     runtime: vite-webgpu
     model_manifest: null
     asset_manifest_schema: null
-    source: neurodesk/webapps@local
+    source: neurodesk/webapps@9ea138c6aaca51d3f6f2b723fb59a3d5ac692eae
     license: MIT
     maintainers: [felenitaribeiro]
-    support_status: experimental
+    support_status: active
     shell: imaging-workspace
     ci:
       toolchains: [node]
-      shared_runtime: true
+      shared_runtime: false
+      browser_test: true
       release: true
-  - id: omezarr-viewer
-    path: omezarr-viewer
+  - id: zarro
+    path: zarro
     title: ZARRo
     description: Stream and explore multiscale OME-Zarr volumes directly in the browser.
     category: quality-annotation
@@ -279,12 +289,13 @@ apps:
     runtime: vite-webgpu
     model_manifest: null
     asset_manifest_schema: null
-    source: neurodesk/webapps@local
+    source: neurodesk/webapps@9ea138c6aaca51d3f6f2b723fb59a3d5ac692eae
     license: BSD-2-Clause
     maintainers: [neurodesk]
-    support_status: experimental
+    support_status: active
     shell: imaging-workspace
     ci:
       toolchains: [node]
-      shared_runtime: true
+      shared_runtime: false
+      browser_test: true
       release: true

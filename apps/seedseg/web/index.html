@@ -1,9 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script type="importmap">
+  {
+    "imports": {
+      "@neurodesk/webapp-components": "./vendor/webapp-components/src/index.js",
+      "@neurodesk/webapp-components/ui": "./vendor/webapp-components/src/ui/index.js",
+      "@neurodesk/webapp-components/file-io": "./vendor/webapp-components/src/file-io/index.js",
+      "@neurodesk/webapp-components/volume": "./vendor/webapp-components/src/volume/index.js",
+      "@neurodesk/webapp-components/": "./vendor/webapp-components/src/"
+    }
+  }
+  </script>
+
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SeedSeg - Prostate Gold Seed Segmentation</title>
+  <link rel="stylesheet" href="vendor/webapp-components/src/styles/inference-workspace.css">
   <link rel="stylesheet" href="css/styles.css">
   <script src="coi-serviceworker.js"></script>
 </head>
@@ -19,15 +32,15 @@
       <span class="version" id="appVersion"></span>
     </div>
     <div class="header-links">
-      <button class="header-link" id="aboutButton" title="About">
+      <button class="header-link" id="aboutButton" data-neurodesk-control="about" title="About">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
         <span>About</span>
       </button>
-      <button class="header-link" id="citationsButton" title="Citations">
+      <button class="header-link" id="citationsButton" data-neurodesk-control="cite" title="Citations">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         <span>Cite</span>
       </button>
-      <button class="header-link" id="privacyButton" title="Privacy">
+      <button class="header-link" id="privacyButton" data-neurodesk-control="privacy" title="Privacy">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         <span>Privacy</span>
       </button>
@@ -139,7 +152,7 @@
         </h2>
         <div class="section-content">
           <div class="stage-buttons-grid" id="stageButtons"></div>
-          <button class="btn btn-secondary btn-sm" id="clearResults" style="width: 100%; margin-top: var(--space-sm);">
+          <button class="btn btn-secondary btn-sm" id="clearResults" style="width: 100%; margin-top: var(--nd-space-sm);">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             Clear All
           </button>
@@ -274,8 +287,9 @@
   <!-- Footer -->
   <footer class="app-footer">
     <span>SeedSeg <span id="footerVersion"></span></span>
-    <span>All processing happens locally in your browser. No data is uploaded.</span>
-    <a href="https://github.com/neurodesk/webapps/tree/main/apps/seedseg" target="_blank" style="color: var(--color-text-dim);">GitHub</a>
+    <span>Imaging data is processed locally in your browser and is not uploaded.</span>
+    <a href="../" style="color: var(--nd-color-text-dim);">More Neurodesk webapps</a>
+    <a href="https://github.com/neurodesk/webapps/tree/main/apps/seedseg" target="_blank" style="color: var(--nd-color-text-dim);">GitHub</a>
   </footer>
 
 </div>
@@ -289,7 +303,7 @@
     </div>
     <div class="modal-body">
       <div class="about-highlight">
-        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="var(--color-primary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="var(--nd-color-primary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
           <circle cx="12" cy="12" r="10"/>
           <circle cx="12" cy="12" r="3"/>
           <line x1="12" y1="2" x2="12" y2="5"/>
@@ -328,7 +342,7 @@
     </div>
     <div class="modal-body">
       <div class="privacy-highlight">
-        <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
+        <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="var(--nd-color-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         </svg>
         <div>
@@ -384,7 +398,7 @@
 
       <div class="citation-section">
         <h4>Reference Implementations</h4>
-        <p class="citations-intro" style="margin-bottom: var(--space-sm);">The following repositories were used as references:</p>
+        <p class="citations-intro" style="margin-bottom: var(--nd-space-sm);">The following repositories were used as references:</p>
         <div class="ref-list">
           <a href="https://github.com/korbinian90/MriResearchTools.jl" target="_blank" rel="noopener">MriResearchTools.jl</a> - Bias field correction algorithm
         </div>

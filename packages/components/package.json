@@ -27,15 +27,11 @@
     "./inference": "./src/inference/index.js",
     "./pipeline": "./src/pipeline/index.js",
     "./volume": "./src/volume/index.js",
-    "./mask": "./src/mask/index.js",
-    "./plugins": "./src/plugins/index.js",
-    "./plugins/synthstrip": "./src/plugins/synthstrip/index.js",
-    "./plugins/sct": "./src/plugins/sct/index.js",
-    "./plugins/vesselboost": "./src/plugins/vesselboost/index.js",
-    "./plugins/musclemap": "./src/plugins/musclemap/index.js",
-    "./plugins/lesion-network-mapping": "./src/plugins/lesion-network-mapping/index.js",
-    "./plugins/qsm": "./src/plugins/qsm/index.js",
-    "./styles/base.css": "./src/styles/base.css"
+    "./worker": "./src/worker/index.js",
+    "./qsm": "./src/qsm/index.js",
+    "./styles/base.css": "./src/styles/base.css",
+    "./styles/inference-workspace.css": "./src/styles/inference-workspace.css",
+    "./styles/imaging-workspace.css": "./src/styles/imaging-workspace.css"
   },
   "scripts": {
     "build:showcase": "node scripts/build-showcase.mjs",

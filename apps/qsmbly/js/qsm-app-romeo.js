@@ -1,5 +1,5 @@
 // Import extracted utility modules
-import { createThresholdMask } from './modules/mask/ThresholdUtils.js';
+import { createThresholdMask } from '@neurodesk/webapp-components/volume';
 import {
   parseNiftiHeader,
   isGzipped,
@@ -8,17 +8,15 @@ import {
   createMaskNifti,
   createNiftiHeaderFromVolume,
   createFloat64Nifti
-} from './modules/file-io/NiftiUtils.js';
-import { ConsoleOutput } from './modules/ui/ConsoleOutput.js';
-import { ModalManager } from './modules/ui/ModalManager.js';
-import { ProgressManager } from './modules/ui/ProgressManager.js';
+  , createNiftiFromVolume
+} from '@neurodesk/webapp-components/file-io';
+import { ModalManager } from '@neurodesk/webapp-components/ui';
 import { LandingPage } from './modules/ui/LandingPage.js';
 import { Tutorial, WelcomePrompt } from './modules/ui/Tutorial.js';
-import { EchoNavigator } from './modules/viewer/EchoNavigator.js';
-import { FileIOController, PipelineExecutor, PipelineSettingsController, MaskController, ViewerController } from './controllers/index.js';
-import { DicomController } from './controllers/DicomController.js';
+import { QsmInputSet, QsmPipelineController, PipelineSettingsController, MaskController, ViewerController } from './controllers/index.js';
+import { QsmDicomInput } from './controllers/QsmDicomInput.js';
 import { DicompareController } from 'https://dicompare.neurodesk.org/embed/DicompareController.js';
-import { DicompareReportRenderer } from 'https://dicompare.neurodesk.org/embed/DicompareReportRenderer.js';
+import { DicompareReportRenderer } from '@neurodesk/webapp-components/ui';
 import * as QSMConfig from './app/config.js';
 import { buildConfigJson, maskSectionString } from './modules/ConfigBridge.js';
 
@@ -116,13 +114,9 @@ class QSMApp {
     this.init();
   }
 
-  // Getters for backward compatibility - delegates to PipelineExecutor
+  // App-level state delegates to the QSM pipeline controller.
   get pipelineRunning() {
     return this.pipelineExecutor?.isRunning() || false;
-  }
-
-  get worker() {
-    return this.pipelineExecutor?.getWorker() || null;
   }
 
   get workerReady() {
@@ -153,7 +147,7 @@ class QSMApp {
     this._setupOnboarding();
 
     // Initialize FileIOController first (other controllers depend on it)
-    this.fileIOController = new FileIOController({
+    this.fileIOController = new QsmInputSet({
       updateOutput: (msg) => this.updateOutput(msg),
       onFilesChanged: () => this._onBucketsChanged(),
       onMagnitudeFilesChanged: (files) => this._onMagnitudeFilesChanged(files),
@@ -186,7 +180,7 @@ class QSMApp {
     }
 
     // Initialize pipeline executor (before mask controller, provides worker)
-    this.pipelineExecutor = new PipelineExecutor({
+    this.pipelineExecutor = new QsmPipelineController({
       updateOutput: (msg) => this.updateOutput(msg),
       setProgress: (val, text) => this.setProgress(val, text),
       onStageData: (data) => this._onStageData(data),
@@ -198,7 +192,7 @@ class QSMApp {
     // Initialize mask controller
     this.maskController = new MaskController({
       nv: this.nv,
-      getWorker: () => this.pipelineExecutor?.getWorker(),
+      getWorker: () => this.pipelineExecutor?.getChannel(),
       updateOutput: (msg) => this.updateOutput(msg),
       setProgress: (val, text) => this.setProgress(val, text),
       initializeWorker: () => this.pipelineExecutor?.initialize(),
@@ -222,7 +216,7 @@ class QSMApp {
     this.dicompareRenderer = new DicompareReportRenderer();
 
     // Initialize DICOM controller
-    this.dicomController = new DicomController({
+    this.dicomController = new QsmDicomInput({
       updateOutput: (msg) => this.updateOutput(msg),
       onConversionComplete: (classified) => this._onDicomConversionComplete(classified),
       onFilesRetained: (files) => this._onDicomFilesRetained(files)
@@ -2925,7 +2919,7 @@ class QSMApp {
     const baseName = name.replace(/\.(nii|nii\.gz)$/i, '');
 
     // Create NIfTI from volume data
-    const niftiBuffer = this.createNiftiFromVolume(vol);
+    const niftiBuffer = createNiftiFromVolume(vol);
 
     // Download
     const blob = new Blob([niftiBuffer], { type: 'application/octet-stream' });
@@ -2966,89 +2960,6 @@ class QSMApp {
   /**
    * Create a NIfTI buffer from a NiiVue volume
    */
-  createNiftiFromVolume(vol) {
-    const hdr = vol.hdr;
-    const img = vol.img;
-
-    // Determine data type and bytes per voxel
-    let datatype = 16;  // FLOAT32 by default
-    let bitpix = 32;
-    let bytesPerVoxel = 4;
-
-    if (img instanceof Float64Array) {
-      datatype = 64;  // FLOAT64
-      bitpix = 64;
-      bytesPerVoxel = 8;
-    } else if (img instanceof Int16Array) {
-      datatype = 4;   // INT16
-      bitpix = 16;
-      bytesPerVoxel = 2;
-    } else if (img instanceof Uint8Array) {
-      datatype = 2;   // UINT8
-      bitpix = 8;
-      bytesPerVoxel = 1;
-    }
-
-    const headerSize = 352;
-    const dataSize = img.length * bytesPerVoxel;
-    const buffer = new ArrayBuffer(headerSize + dataSize);
-    const view = new DataView(buffer);
-
-    // sizeof_hdr
-    view.setInt32(0, 348, true);
-
-    // dim array
-    const dims = hdr.dims || [3, vol.dims[1], vol.dims[2], vol.dims[3], 1, 1, 1, 1];
-    for (let i = 0; i < 8; i++) {
-      view.setInt16(40 + i * 2, dims[i] || 0, true);
-    }
-
-    // datatype and bitpix
-    view.setInt16(70, datatype, true);
-    view.setInt16(72, bitpix, true);
-
-    // pixdim
-    const pixdim = hdr.pixDims || [1, 1, 1, 1, 1, 1, 1, 1];
-    for (let i = 0; i < 8; i++) {
-      view.setFloat32(76 + i * 4, pixdim[i] || 1, true);
-    }
-
-    // vox_offset
-    view.setFloat32(108, headerSize, true);
-
-    // scl_slope and scl_inter
-    view.setFloat32(112, hdr.scl_slope || 1, true);
-    view.setFloat32(116, hdr.scl_inter || 0, true);
-
-    // xyzt_units
-    view.setUint8(123, 10);  // mm + sec
-
-    // qform_code and sform_code
-    view.setInt16(252, hdr.qform_code || 1, true);
-    view.setInt16(254, hdr.sform_code || 1, true);
-
-    // Affine matrix
-    if (hdr.affine) {
-      for (let i = 0; i < 4; i++) {
-        view.setFloat32(280 + i * 4, hdr.affine[0][i] || 0, true);
-        view.setFloat32(296 + i * 4, hdr.affine[1][i] || 0, true);
-        view.setFloat32(312 + i * 4, hdr.affine[2][i] || 0, true);
-      }
-    }
-
-    // magic
-    view.setUint8(344, 0x6E);  // 'n'
-    view.setUint8(345, 0x2B);  // '+'
-    view.setUint8(346, 0x31);  // '1'
-    view.setUint8(347, 0x00);
-
-    // Copy image data
-    const dataView = new Uint8Array(buffer, headerSize);
-    const imgBytes = new Uint8Array(img.buffer, img.byteOffset, img.byteLength);
-    dataView.set(imgBytes);
-
-    return buffer;
-  }
 
   updateOutput(message) {
     const consoleOutput = document.getElementById('consoleOutput');
@@ -3066,7 +2977,7 @@ class QSMApp {
 
   /**
    * Auto-detect optimal threshold using Otsu's method and set the slider
-   * Delegates computation to imported ThresholdUtils module
+   * Delegates computation to the shared volume threshold utility.
    */
   /**
    * Auto-detect optimal threshold using Otsu's method
@@ -3308,19 +3219,15 @@ class QSMApp {
         : null;
 
       await this.pipelineExecutor.initialize();
-      this.pipelineExecutor.pipelineRunning = true;
       this.updateOutput("Starting SWI pipeline...");
 
-      this.pipelineExecutor.getWorker().postMessage({
-        type: 'runSWI',
-        data: {
+      this.pipelineExecutor.runSpecial('runSWI', {
           magnitudeBuffers,
           phaseBuffers,
           maskThreshold: this.maskThreshold,
           customMaskBuffer,
           preparedMagnitude,
           pipelineSettings: this.pipelineSettings
-        }
       });
 
       document.getElementById('cancelPipeline').disabled = false;
@@ -3370,18 +3277,14 @@ class QSMApp {
         : null;
 
       await this.pipelineExecutor.initialize();
-      this.pipelineExecutor.pipelineRunning = true;
       this.updateOutput("Starting T2*/R2* mapping...");
 
-      this.pipelineExecutor.getWorker().postMessage({
-        type: 'runT2starR2star',
-        data: {
+      this.pipelineExecutor.runSpecial('runT2starR2star', {
           magnitudeBuffers,
           maskThreshold: this.maskThreshold,
           customMaskBuffer,
           preparedMagnitude,
           echoTimes
-        }
       });
 
       document.getElementById('cancelPipeline').disabled = false;
@@ -3467,26 +3370,24 @@ class QSMApp {
     this.commandPreviewModal?.open();
 
     // Ask worker to generate command and methods via WASM
-    const worker = this.pipelineExecutor?.worker;
-    if (!worker) { if (cmdEl) cmdEl.textContent = 'ERROR: Worker not available'; return; }
+    if (!this.pipelineExecutor?.isReady()) { if (cmdEl) cmdEl.textContent = 'ERROR: Worker not available'; return; }
 
     const maskSection = maskSectionString(this.maskOpsHistory, maskSource);
-    const handler = (e) => {
-      if (e.data.type === 'commandResult') {
-        if (cmdEl) cmdEl.textContent = e.data.result;
-      } else if (e.data.type === 'methodsResult') {
-        const raw = e.data.result;
+    const unsubscribe = this.pipelineExecutor.subscribe((message) => {
+      if (message.type === 'commandResult') {
+        if (cmdEl) cmdEl.textContent = message.result;
+      } else if (message.type === 'methodsResult') {
+        const raw = message.result;
         if (methodsRaw) methodsRaw.textContent = raw;
         if (methodsRendered) methodsRendered.innerHTML = renderMarkdown(raw);
-      } else if (e.data.type === 'configTomlResult') {
-        this._lastToml = e.data.result; // last message back — safe to detach
-        worker.removeEventListener('message', handler);
+      } else if (message.type === 'configTomlResult') {
+        this._lastToml = message.result;
+        unsubscribe();
       }
-    };
-    worker.addEventListener('message', handler);
-    worker.postMessage({ type: 'generateCommand', data: { configJson, maskSection } });
-    worker.postMessage({ type: 'generateMethods', data: { configJson, maskSection } });
-    worker.postMessage({ type: 'generateConfigToml', data: { configJson, maskSection } });
+    });
+    this.pipelineExecutor.send('generateCommand', { configJson, maskSection });
+    this.pipelineExecutor.send('generateMethods', { configJson, maskSection });
+    this.pipelineExecutor.send('generateConfigToml', { configJson, maskSection });
   }
 
   switchExportTab(tab) {

@@ -1,7 +1,7 @@
 {
   "name": "browserqc",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.6",
   "type": "module",
   "license": "BSD-2-Clause",
   "description": "Automated MRI quality control, entirely in the browser. No data leaves your machine. brainchop deep-learning segmentation (TensorFlow.js) + niimath MRIQC-style metrics + NiiVue.",
@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@neurodesk/webapp-components": "workspace:*",
+    "@neurodesk/runtime-support": "workspace:*",
     "@niivue/dcm2niix": "^1.2.0",
     "@niivue/niivue": "1.0.0-rc.9",
     "@niivue/nv-ext-image-processing": "^1.0.0-rc.10",

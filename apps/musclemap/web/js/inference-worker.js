@@ -5,488 +5,108 @@
  * Pipeline: NIfTI parse → orient → resample → normalize → crop → 2D sliding window → postprocess → output
  */
 
-/* global importScripts, ort, localforage, nifti */
+import * as ort from '../wasm/ort.webgpu.bundle.min.mjs';
+import { createWorkerEmitter, fetchModel as fetchModelAsset, getOptimalWasmThreads, installWorkerRouter } from '../vendor/webapp-components/src/worker/index.js';
+import { createNiftiFromData, parseNiftiVolume } from '../vendor/webapp-components/src/file-io/NiftiUtils.js';
+import {
+  computeForegroundBBox,
+  cropVolume,
+  getOrientationTransform,
+  inverseOrient,
+  orientToRAS,
+  resampleVolume,
+  uncropVolume as uncrop,
+} from '../vendor/webapp-components/src/volume/geometry.js';
+import { zScoreNormalize } from '../vendor/webapp-components/src/volume/normalization.js';
 
-importScripts('../wasm/ort.webgpu.min.js');
-importScripts('https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js');
-importScripts('../nifti-js/index.js');
+let localforage;
+let nifti;
+let MuscleMapLabelCodec;
+let MuscleMapAssetIntegrity;
+let MuscleMapMonaiCompat;
+let MuscleMapSlidingWindowPolicy;
+let dependenciesReady;
+
+function loadDependencies() {
+  dependenciesReady ||= Promise.all([
+    import('https://cdn.jsdelivr.net/npm/localforage@1.10.0/+esm'),
+    import('../nifti-js/index.js'),
+    import('./label-codec.js'),
+    import('./asset-integrity.js'),
+    import('./monai-compat.js'),
+    import('./sliding-window-policy.js')
+  ]).then(([localForageModule]) => {
+    localforage = localForageModule.default;
+    nifti = globalThis.nifti;
+    MuscleMapLabelCodec = globalThis.MuscleMapLabelCodec;
+    MuscleMapAssetIntegrity = globalThis.MuscleMapAssetIntegrity;
+    MuscleMapMonaiCompat = globalThis.MuscleMapMonaiCompat;
+    MuscleMapSlidingWindowPolicy = globalThis.MuscleMapSlidingWindowPolicy;
+    if (!localforage || !nifti || !MuscleMapLabelCodec || !MuscleMapAssetIntegrity || !MuscleMapMonaiCompat || !MuscleMapSlidingWindowPolicy) {
+      throw new Error('MuscleMap worker dependencies failed to initialize');
+    }
+    return { localforage, nifti };
+  });
+  return dependenciesReady;
+}
 
 // ==================== Message Helpers ====================
 
-function postProgress(value, text) {
-  self.postMessage({ type: 'progress', value, text });
-}
+const workerMessages = createWorkerEmitter(self);
+const {
+  complete: postComplete,
+  error: postError,
+  log: postLog,
+  progress: postProgress,
+} = workerMessages;
 
-function postLog(message) {
-  self.postMessage({ type: 'log', message });
-}
-
-function postError(message) {
-  self.postMessage({ type: 'error', message });
-}
-
-function postComplete() {
-  self.postMessage({ type: 'complete' });
-}
-
-function postStageData(stage, niftiData, description) {
-  self.postMessage(
-    { type: 'stageData', stage, niftiData, description },
-    [niftiData]
-  );
+function postStageData(stage, niftiData, description, provenance = null) {
+  workerMessages.stageData(stage, niftiData, description, { provenance });
 }
 
 function postDetectedLabels(labels) {
-  self.postMessage({ type: 'detectedLabels', labels });
+  workerMessages.emit('detectedLabels', { labels }, { transfer: false });
 }
 
 function postMetrics(metrics) {
-  self.postMessage({ type: 'metrics', metrics });
+  workerMessages.emit('metrics', { metrics }, { transfer: false });
 }
 
 // ==================== NIfTI Parsing ====================
 
-function decompressIfNeeded(data) {
-  const bytes = new Uint8Array(data);
-  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
-    if (typeof nifti !== 'undefined' && nifti.isCompressed) {
-      if (nifti.isCompressed(bytes.buffer)) {
-        return new Uint8Array(nifti.decompress(bytes.buffer));
-      }
-    }
-    throw new Error('Gzipped NIfTI detected but decompression not available');
-  }
-  return bytes;
-}
-
 function parseNiftiInput(arrayBuffer) {
-  const data = decompressIfNeeded(arrayBuffer);
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-
-  const dims = [];
-  for (let i = 0; i < 8; i++) dims.push(view.getInt16(40 + i * 2, true));
-  const nx = dims[1], ny = dims[2], nz = dims[3];
-
-  const pixDims = [];
-  for (let i = 0; i < 8; i++) pixDims.push(view.getFloat32(76 + i * 4, true));
-
-  const datatype = view.getInt16(70, true);
-  const voxOffset = view.getFloat32(108, true);
-  const sclSlope = view.getFloat32(112, true) || 1;
-  const sclInter = view.getFloat32(116, true) || 0;
-  const dataStart = Math.ceil(voxOffset);
-  const nTotal = nx * ny * nz;
-
-  const imageData = new Float32Array(nTotal);
-  switch (datatype) {
-    case 2:
-      for (let i = 0; i < nTotal; i++) imageData[i] = data[dataStart + i] * sclSlope + sclInter;
-      break;
-    case 4:
-      for (let i = 0; i < nTotal; i++) imageData[i] = view.getInt16(dataStart + i * 2, true) * sclSlope + sclInter;
-      break;
-    case 8:
-      for (let i = 0; i < nTotal; i++) imageData[i] = view.getInt32(dataStart + i * 4, true) * sclSlope + sclInter;
-      break;
-    case 16:
-      for (let i = 0; i < nTotal; i++) imageData[i] = view.getFloat32(dataStart + i * 4, true) * sclSlope + sclInter;
-      break;
-    case 64:
-      for (let i = 0; i < nTotal; i++) imageData[i] = view.getFloat64(dataStart + i * 8, true) * sclSlope + sclInter;
-      break;
-    case 512:
-      for (let i = 0; i < nTotal; i++) imageData[i] = view.getUint16(dataStart + i * 2, true) * sclSlope + sclInter;
-      break;
-    default:
-      throw new Error(`Unsupported NIfTI datatype: ${datatype}`);
-  }
-
-  // Extract affine matrix (prefer sform)
-  const affine = extractAffine(view);
-
-  const headerSize = dataStart;
-  const headerBytes = new ArrayBuffer(headerSize);
-  new Uint8Array(headerBytes).set(data.slice(0, headerSize));
-
-  return {
-    imageData,
-    dims: [nx, ny, nz],
-    voxelSize: [Math.abs(pixDims[1]) || 1, Math.abs(pixDims[2]) || 1, Math.abs(pixDims[3]) || 1],
-    headerBytes,
-    affine
-  };
-}
-
-function extractAffine(view) {
-  const sformCode = view.getInt16(254, true);
-  const qformCode = view.getInt16(252, true);
-
-  if (sformCode > 0) {
-    const affine = [new Float64Array(4), new Float64Array(4), new Float64Array(4), new Float64Array([0, 0, 0, 1])];
-    for (let i = 0; i < 4; i++) {
-      affine[0][i] = view.getFloat32(280 + i * 4, true);
-      affine[1][i] = view.getFloat32(296 + i * 4, true);
-      affine[2][i] = view.getFloat32(312 + i * 4, true);
-    }
-    return affine;
-  }
-
-  if (qformCode > 0) {
-    const pixDims = [];
-    for (let i = 0; i < 4; i++) pixDims.push(view.getFloat32(76 + i * 4, true));
-    const qb = view.getFloat32(256, true);
-    const qc = view.getFloat32(260, true);
-    const qd = view.getFloat32(264, true);
-    const qx = view.getFloat32(268, true);
-    const qy = view.getFloat32(272, true);
-    const qz = view.getFloat32(276, true);
-    const sqr = qb * qb + qc * qc + qd * qd;
-    const qa = sqr > 1.0 ? 0.0 : Math.sqrt(1.0 - sqr);
-    const R = [
-      [qa*qa+qb*qb-qc*qc-qd*qd, 2*(qb*qc-qa*qd), 2*(qb*qd+qa*qc)],
-      [2*(qb*qc+qa*qd), qa*qa+qc*qc-qb*qb-qd*qd, 2*(qc*qd-qa*qb)],
-      [2*(qb*qd-qa*qc), 2*(qc*qd+qa*qb), qa*qa+qd*qd-qb*qb-qc*qc]
-    ];
-    const qfac = pixDims[0] < 0 ? -1 : 1;
-    return [
-      new Float64Array([R[0][0]*pixDims[1], R[0][1]*pixDims[2], R[0][2]*pixDims[3]*qfac, qx]),
-      new Float64Array([R[1][0]*pixDims[1], R[1][1]*pixDims[2], R[1][2]*pixDims[3]*qfac, qy]),
-      new Float64Array([R[2][0]*pixDims[1], R[2][1]*pixDims[2], R[2][2]*pixDims[3]*qfac, qz]),
-      new Float64Array([0, 0, 0, 1])
-    ];
-  }
-
-  const pixDims = [];
-  for (let i = 0; i < 4; i++) pixDims.push(view.getFloat32(76 + i * 4, true));
-  return [
-    new Float64Array([pixDims[1] || 1, 0, 0, 0]),
-    new Float64Array([0, pixDims[2] || 1, 0, 0]),
-    new Float64Array([0, 0, pixDims[3] || 1, 0]),
-    new Float64Array([0, 0, 0, 1])
-  ];
+  return parseNiftiVolume(arrayBuffer, { decompress: buffer => nifti.decompress(buffer) });
 }
 
 // ==================== NIfTI Output ====================
 
-function createOutputNifti(uint8Data, sourceHeader, dims) {
-  const srcView = new DataView(sourceHeader);
-  const voxOffset = srcView.getFloat32(108, true);
-  const headerSize = Math.ceil(voxOffset);
-
-  const buffer = new ArrayBuffer(headerSize + uint8Data.length);
-  const destBytes = new Uint8Array(buffer);
-  const destView = new DataView(buffer);
-
-  destBytes.set(new Uint8Array(sourceHeader).slice(0, headerSize));
-
-  // Set datatype to UINT8
-  destView.setInt16(70, 2, true);
-  destView.setInt16(72, 8, true);
-
-  // Update dims if provided
-  if (dims) {
-    destView.setInt16(40, 3, true);
-    destView.setInt16(42, dims[0], true);
-    destView.setInt16(44, dims[1], true);
-    destView.setInt16(46, dims[2], true);
-    destView.setInt16(48, 1, true);
-  }
-
-  destView.setFloat32(112, 1, true);  // scl_slope
-  destView.setFloat32(116, 0, true);  // scl_inter
-
-  // Set cal_min/cal_max so NiiVue maps label values 1:1 to colormap indices
-  destView.setFloat32(124, 255, true);  // cal_max
-  destView.setFloat32(128, 0, true);    // cal_min
-
-  new Uint8Array(buffer, headerSize).set(uint8Data);
-  return buffer;
+function createOutputNifti(labelData, sourceHeader, dims) {
+  return createNiftiFromData(labelData, sourceHeader, { dims });
 }
 
 // ==================== Preprocessing ====================
 
-function getOrientationTransform(affine) {
-  const mat = [
-    [affine[0][0], affine[0][1], affine[0][2]],
-    [affine[1][0], affine[1][1], affine[1][2]],
-    [affine[2][0], affine[2][1], affine[2][2]]
-  ];
 
-  const perm = [0, 0, 0];
-  const flip = [false, false, false];
-  const used = [false, false, false];
 
-  for (let outAxis = 0; outAxis < 3; outAxis++) {
-    let bestAxis = -1;
-    let bestVal = -1;
-    for (let inAxis = 0; inAxis < 3; inAxis++) {
-      if (used[inAxis]) continue;
-      const val = Math.abs(mat[outAxis][inAxis]);
-      if (val > bestVal) {
-        bestVal = val;
-        bestAxis = inAxis;
-      }
-    }
-    perm[outAxis] = bestAxis;
-    flip[outAxis] = mat[outAxis][bestAxis] < 0;
-    used[bestAxis] = true;
-  }
 
-  return { perm, flip };
-}
-
-function orientToRAS(data, dims, perm, flip) {
-  const [nx, ny, nz] = dims;
-  const srcDims = [nx, ny, nz];
-  const dstDims = [srcDims[perm[0]], srcDims[perm[1]], srcDims[perm[2]]];
-  const [dx, dy, dz] = dstDims;
-  const result = new Float32Array(dx * dy * dz);
-
-  for (let oz = 0; oz < dz; oz++) {
-    for (let oy = 0; oy < dy; oy++) {
-      for (let ox = 0; ox < dx; ox++) {
-        const coords = [ox, oy, oz];
-        const src = [0, 0, 0];
-        for (let i = 0; i < 3; i++) {
-          src[perm[i]] = flip[i] ? (dstDims[i] - 1 - coords[i]) : coords[i];
-        }
-        const srcIdx = src[0] + src[1] * nx + src[2] * nx * ny;
-        const dstIdx = ox + oy * dx + oz * dx * dy;
-        result[dstIdx] = data[srcIdx];
-      }
-    }
-  }
-
-  return { data: result, dims: dstDims };
-}
-
-function resampleVolume(data, dims, srcSpacing, tgtSpacing) {
-  const [nx, ny, nz] = dims;
-  const actualTarget = tgtSpacing.map((t, i) => t < 0 ? srcSpacing[i] : t);
-
-  const newDims = [
-    Math.round(nx * srcSpacing[0] / actualTarget[0]),
-    Math.round(ny * srcSpacing[1] / actualTarget[1]),
-    Math.round(nz * srcSpacing[2] / actualTarget[2])
-  ];
-  const [nnx, nny, nnz] = newDims;
-  const result = new Float32Array(nnx * nny * nnz);
-
-  const scaleX = (nx - 1) / Math.max(nnx - 1, 1);
-  const scaleY = (ny - 1) / Math.max(nny - 1, 1);
-  const scaleZ = (nz - 1) / Math.max(nnz - 1, 1);
-
-  for (let z = 0; z < nnz; z++) {
-    const sz = z * scaleZ;
-    const z0 = Math.floor(sz);
-    const z1 = Math.min(z0 + 1, nz - 1);
-    const wz = sz - z0;
-    for (let y = 0; y < nny; y++) {
-      const sy = y * scaleY;
-      const y0 = Math.floor(sy);
-      const y1 = Math.min(y0 + 1, ny - 1);
-      const wy = sy - y0;
-      for (let x = 0; x < nnx; x++) {
-        const sx = x * scaleX;
-        const x0 = Math.floor(sx);
-        const x1 = Math.min(x0 + 1, nx - 1);
-        const wx = sx - x0;
-
-        const c000 = data[x0 + y0*nx + z0*nx*ny];
-        const c100 = data[x1 + y0*nx + z0*nx*ny];
-        const c010 = data[x0 + y1*nx + z0*nx*ny];
-        const c110 = data[x1 + y1*nx + z0*nx*ny];
-        const c001 = data[x0 + y0*nx + z1*nx*ny];
-        const c101 = data[x1 + y0*nx + z1*nx*ny];
-        const c011 = data[x0 + y1*nx + z1*nx*ny];
-        const c111 = data[x1 + y1*nx + z1*nx*ny];
-
-        const c00 = c000*(1-wx) + c100*wx;
-        const c01 = c001*(1-wx) + c101*wx;
-        const c10 = c010*(1-wx) + c110*wx;
-        const c11 = c011*(1-wx) + c111*wx;
-        const c0 = c00*(1-wy) + c10*wy;
-        const c1 = c01*(1-wy) + c11*wy;
-
-        result[x + y*nnx + z*nnx*nny] = c0*(1-wz) + c1*wz;
-      }
-    }
-  }
-
-  return { data: result, dims: newDims, spacing: actualTarget };
-}
-
-function zScoreNormalizeNonzero(data) {
-  const n = data.length;
-  let sum = 0, count = 0;
-  for (let i = 0; i < n; i++) {
-    if (data[i] !== 0) { sum += data[i]; count++; }
-  }
-  if (count === 0) return new Float32Array(n);
-  const mean = sum / count;
-  let sumSq = 0;
-  for (let i = 0; i < n; i++) {
-    if (data[i] !== 0) { const d = data[i] - mean; sumSq += d * d; }
-  }
-  const std = Math.sqrt(sumSq / count) || 1;
-  const result = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    if (data[i] !== 0) result[i] = (data[i] - mean) / std;
-  }
-  return result;
-}
-
-function cropForeground(data, dims, margin) {
-  const [nx, ny, nz] = dims;
-  let minX = nx, maxX = 0, minY = ny, maxY = 0, minZ = nz, maxZ = 0;
-
-  for (let z = 0; z < nz; z++) {
-    for (let y = 0; y < ny; y++) {
-      for (let x = 0; x < nx; x++) {
-        if (data[x + y*nx + z*nx*ny] !== 0) {
-          if (x < minX) minX = x; if (x > maxX) maxX = x;
-          if (y < minY) minY = y; if (y > maxY) maxY = y;
-          if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
-        }
-      }
-    }
-  }
-
-  if (maxX < minX) return { data: new Float32Array(0), dims: [0,0,0], origin: [0,0,0] };
-
-  const ox = Math.max(0, minX - margin);
-  const oy = Math.max(0, minY - margin);
-  const oz = Math.max(0, minZ - margin);
-  const ex = Math.min(nx, maxX + margin + 1);
-  const ey = Math.min(ny, maxY + margin + 1);
-  const ez = Math.min(nz, maxZ + margin + 1);
-  const cnx = ex - ox, cny = ey - oy, cnz = ez - oz;
-
-  const result = new Float32Array(cnx * cny * cnz);
-  for (let z = 0; z < cnz; z++) {
-    for (let y = 0; y < cny; y++) {
-      const srcOff = (z+oz)*nx*ny + (y+oy)*nx + ox;
-      const dstOff = z*cnx*cny + y*cnx;
-      result.set(data.subarray(srcOff, srcOff + cnx), dstOff);
-    }
-  }
-
-  return { data: result, dims: [cnx, cny, cnz], origin: [ox, oy, oz] };
-}
 
 // ==================== Sliding Window ====================
 
+function cropForeground(data, dims, margin) {
+  const bbox = computeForegroundBBox(data, dims, margin);
+  if (!bbox) return { data: new Float32Array(0), dims: [0, 0, 0], origin: [0, 0, 0] };
+  return cropVolume(data, dims, bbox);
+}
+
 function computeGaussianWeightMap(h, w) {
-  const sigma = Math.min(h, w) / 8;
-  const weights = new Float32Array(h * w);
-  const cy = (h - 1) / 2;
-  const cx = (w - 1) / 2;
-  const s2 = 2 * sigma * sigma;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const dy = y - cy, dx = x - cx;
-      weights[y * w + x] = Math.exp(-(dy*dy + dx*dx) / s2);
-    }
-  }
-  return weights;
+  return MuscleMapSlidingWindowPolicy.computeGaussianWeightMap(h, w);
 }
 
 function computeTilePositions(imgH, imgW, patchH, patchW, overlap) {
-  const stepH = Math.max(1, Math.round(patchH * (1 - overlap)));
-  const stepW = Math.max(1, Math.round(patchW * (1 - overlap)));
-
-  const numY = Math.max(1, Math.ceil((imgH - patchH) / stepH) + 1);
-  const numX = Math.max(1, Math.ceil((imgW - patchW) / stepW) + 1);
-
-  const positions = [];
-  const seen = new Set();
-
-  for (let iy = 0; iy < numY; iy++) {
-    let y = iy * stepH;
-    if (y + patchH > imgH) y = Math.max(0, imgH - patchH);
-    for (let ix = 0; ix < numX; ix++) {
-      let x = ix * stepW;
-      if (x + patchW > imgW) x = Math.max(0, imgW - patchW);
-      const key = `${y},${x}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        positions.push({ y, x });
-      }
-    }
-  }
-
-  return positions;
+  return MuscleMapSlidingWindowPolicy.computeTilePositions(imgH, imgW, patchH, patchW, overlap);
 }
 
 // ==================== Postprocessing ====================
-
-function connectedComponents3D(binaryMask, dims) {
-  const [nx, ny, nz] = dims;
-  const n = nx * ny * nz;
-  const labels = new Int32Array(n);
-  let nextLabel = 1;
-  const parent = [0];
-  const rank = [0];
-
-  function find(x) {
-    while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; }
-    return x;
-  }
-
-  function union(a, b) {
-    a = find(a); b = find(b);
-    if (a === b) return;
-    if (rank[a] < rank[b]) { const t = a; a = b; b = t; }
-    parent[b] = a;
-    if (rank[a] === rank[b]) rank[a]++;
-  }
-
-  const neighborOffsets = [];
-  for (let dz = -1; dz <= 0; dz++)
-    for (let dy = -1; dy <= 1; dy++)
-      for (let dx = -1; dx <= 1; dx++) {
-        if (dz === 0 && dy === 0 && dx >= 0) continue;
-        neighborOffsets.push([dx, dy, dz]);
-      }
-
-  for (let z = 0; z < nz; z++)
-    for (let y = 0; y < ny; y++)
-      for (let x = 0; x < nx; x++) {
-        const idx = z*ny*nx + y*nx + x;
-        if (!binaryMask[idx]) continue;
-        const neighborLabels = [];
-        for (let i = 0; i < neighborOffsets.length; i++) {
-          const nx2 = x+neighborOffsets[i][0], ny2 = y+neighborOffsets[i][1], nz2 = z+neighborOffsets[i][2];
-          if (nx2<0||nx2>=nx||ny2<0||ny2>=ny||nz2<0||nz2>=nz) continue;
-          const nIdx = nz2*ny*nx + ny2*nx + nx2;
-          if (labels[nIdx] > 0) neighborLabels.push(labels[nIdx]);
-        }
-        if (neighborLabels.length === 0) {
-          labels[idx] = nextLabel;
-          parent.push(nextLabel);
-          rank.push(0);
-          nextLabel++;
-        } else {
-          let minLabel = find(neighborLabels[0]);
-          for (let i = 1; i < neighborLabels.length; i++) {
-            const c = find(neighborLabels[i]);
-            if (c < minLabel) minLabel = c;
-          }
-          labels[idx] = minLabel;
-          for (let i = 0; i < neighborLabels.length; i++) union(minLabel, neighborLabels[i]);
-        }
-      }
-
-  const canonicalMap = new Map();
-  let finalLabel = 0;
-  for (let i = 0; i < n; i++) {
-    if (labels[i] === 0) continue;
-    const root = find(labels[i]);
-    if (!canonicalMap.has(root)) canonicalMap.set(root, ++finalLabel);
-    labels[i] = canonicalMap.get(root);
-  }
-  return { labels, numComponents: finalLabel };
-}
 
 function perLabelLargestComponent(labelVolume, dims, numLabels, progressBase = 0.85, progressSpan = 0.10) {
   const [nx, ny, nz] = dims;
@@ -560,7 +180,7 @@ function perLabelLargestComponent(labelVolume, dims, numLabels, progressBase = 0
       }
     }
 
-    const { labels: ccLabels, numComponents } = connectedComponents3D(mask, [boxNx, boxNy, boxNz]);
+    const { labels: ccLabels, numComponents } = MuscleMapMonaiCompat.connectedComponents3D6(mask, [boxNx, boxNy, boxNz]);
 
     if (numComponents <= 1) {
       for (let z = minZ[label]; z <= maxZ[label]; z++) {
@@ -613,20 +233,6 @@ function perLabelLargestComponent(labelVolume, dims, numLabels, progressBase = 0
 
 // ==================== Inverse Transform ====================
 
-function uncrop(croppedData, croppedDims, fullDims, origin) {
-  const [nx, ny, nz] = fullDims;
-  const [cnx, cny, cnz] = croppedDims;
-  const [ox, oy, oz] = origin;
-  const result = new Uint8Array(nx * ny * nz);
-  for (let z = 0; z < cnz; z++) {
-    for (let y = 0; y < cny; y++) {
-      const srcOff = z*cnx*cny + y*cnx;
-      const dstOff = (z+oz)*nx*ny + (y+oy)*nx + ox;
-      result.set(croppedData.subarray(srcOff, srcOff + cnx), dstOff);
-    }
-  }
-  return result;
-}
 
 function resampleLabelsNearest(data, dims, tgtDims) {
   const [nx, ny, nz] = dims;
@@ -648,26 +254,6 @@ function resampleLabelsNearest(data, dims, tgtDims) {
   return result;
 }
 
-function inverseOrient(data, dims, perm, flip, origDims) {
-  const [dx, dy, dz] = dims;
-  const [nx, ny, nz] = origDims;
-  const result = new Uint8Array(nx * ny * nz);
-  for (let oz = 0; oz < dz; oz++) {
-    for (let oy = 0; oy < dy; oy++) {
-      for (let ox = 0; ox < dx; ox++) {
-        const coords = [ox, oy, oz];
-        const src = [0, 0, 0];
-        for (let i = 0; i < 3; i++) {
-          src[perm[i]] = flip[i] ? (dims[i] - 1 - coords[i]) : coords[i];
-        }
-        const srcIdx = ox + oy*dx + oz*dx*dy;
-        const dstIdx = src[0] + src[1]*nx + src[2]*nx*ny;
-        result[dstIdx] = data[srcIdx];
-      }
-    }
-  }
-  return result;
-}
 
 function applyInverseTransforms(labels, workingDims, resampledDims, cropOrigin, needsResample, rasDims, isIdentity, perm, flip, origDims) {
   let outputLabels = uncrop(labels, workingDims, resampledDims, cropOrigin);
@@ -685,53 +271,94 @@ function applyInverseTransforms(labels, workingDims, resampledDims, cropOrigin, 
 
 // ==================== Model Loading ====================
 
-async function fetchModel(url, modelName, progressBase, progressSpan) {
+async function fetchModel(asset, modelName, progressBase, progressSpan) {
+  const url = asset?.url;
+  if (!url) throw new Error('The selected model has no published asset URL');
   const displayName = modelName || url.split('/').pop();
-  const cacheKey = `${url}?v=${self._appVersion || ''}`;
+  const cacheKey = `${url}#sha256=${asset.sha256}`;
 
   try {
     const cached = await localforage.getItem(cacheKey);
-    if (cached && cached.byteLength > 1000000) {
+    if (cached) {
+      await MuscleMapAssetIntegrity.verifyAssetBuffer(cached, asset);
       postLog(`Model loaded from cache: ${displayName}`);
       postProgress(progressBase + progressSpan, `Cached: ${displayName}`);
       return cached;
     }
-  } catch (e) { /* cache miss */ }
+  } catch (error) {
+    postLog(`Discarding unverified cached model: ${error.message}`);
+    await localforage.removeItem(cacheKey).catch(() => {});
+  }
 
-  postLog(`Downloading: ${displayName}...`);
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Failed to fetch model: ${response.status} ${response.statusText}`);
-
-  const contentLength = parseInt(response.headers.get('content-length'), 10);
-  const reader = response.body.getReader();
-  const chunks = [];
-  let received = 0;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    received += value.length;
-    if (contentLength) {
-      const dlProgress = received / contentLength;
-      const mb = (received / 1048576).toFixed(1);
-      const totalMb = (contentLength / 1048576).toFixed(0);
-      postProgress(progressBase + dlProgress * progressSpan, `Downloading ${displayName} (${mb}/${totalMb} MB)`);
+  let lastError = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    postLog(`Downloading: ${displayName}${attempt === 2 ? ' (retry)' : ''}...`);
+    const sources = asset.parts?.length
+      ? asset.parts.map(part => ({
+          ...part,
+          url: new URL(`../${part.path}`, self.location.href).href
+        }))
+      : [{ url, bytes: asset.bytes, sha256: asset.sha256 }];
+    const data = new Uint8Array(asset.bytes);
+    let received = 0;
+    let lastReportedPercent = -1;
+    try {
+      for (const source of sources) {
+        const partStart = received;
+        const part = await fetchModelAsset(
+          {
+            url: source.url,
+            integrity: { bytes: source.bytes, sha256: source.sha256 }
+          },
+          {
+            requestCache: attempt === 1 ? 'no-store' : 'reload',
+            onProgress: ({ received: partReceived }) => {
+              const dlProgress = (partStart + partReceived) / asset.bytes;
+              const totalReceived = partStart + partReceived;
+              const percent = Math.floor(dlProgress * 100);
+              if (percent === lastReportedPercent) return;
+              lastReportedPercent = percent;
+              const mb = (totalReceived / 1048576).toFixed(1);
+              const totalMb = (asset.bytes / 1048576).toFixed(0);
+              postProgress(progressBase + dlProgress * progressSpan, `Downloading ${displayName} (${mb}/${totalMb} MB)`);
+            }
+          }
+        );
+        if (received + part.byteLength > data.length) throw new Error('Downloaded model exceeds the declared byte length');
+        data.set(new Uint8Array(part), received);
+        received += part.byteLength;
+        if (part.byteLength === source.bytes) {
+          const dlProgress = received / asset.bytes;
+          const percent = Math.floor(dlProgress * 100);
+          if (percent !== lastReportedPercent) {
+            lastReportedPercent = percent;
+            const mb = (received / 1048576).toFixed(1);
+            const totalMb = (asset.bytes / 1048576).toFixed(0);
+            postProgress(progressBase + dlProgress * progressSpan, `Downloading ${displayName} (${mb}/${totalMb} MB)`);
+          }
+        }
+        await MuscleMapAssetIntegrity.verifyAssetBuffer(data.slice(partStart, received).buffer, source);
+      }
+      await MuscleMapAssetIntegrity.verifyAssetBuffer(data.buffer, asset);
+    } catch (error) {
+      lastError = error;
+      await localforage.removeItem(cacheKey).catch(() => {});
+      if (attempt === 2) throw error;
+      postLog(`Model download failed: ${error.message}`);
+      continue;
     }
+
+    try {
+      await localforage.setItem(cacheKey, data.buffer);
+    } catch (e) {
+      postLog('Warning: Could not cache model (storage full?)');
+    }
+
+    postLog(`Downloaded and verified: ${displayName} (${(received / 1048576).toFixed(1)} MB)`);
+    return data.buffer;
   }
 
-  const data = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.length; }
-
-  try {
-    await localforage.setItem(cacheKey, data.buffer);
-  } catch (e) {
-    postLog('Warning: Could not cache model (storage full?)');
-  }
-
-  postLog(`Downloaded: ${displayName} (${(received / 1048576).toFixed(1)} MB)`);
-  return data.buffer;
+  throw lastError || new Error(`Unable to verify downloaded model: ${displayName}`);
 }
 
 // ==================== Chunk Size Resolution ====================
@@ -748,10 +375,292 @@ function resolveChunkSize(setting, numClasses, roiH, roiW) {
   return chunkSize;
 }
 
-function getOptimalWasmThreads() {
-  const hardwareThreads = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4;
-  return Math.max(1, hardwareThreads);
+function resolveSourceChunkSize(setting, sourceDepth) {
+  if (setting === 'full') return sourceDepth;
+  const parsed = Number(setting);
+  if (Number.isInteger(parsed) && parsed > 0) return Math.min(parsed, sourceDepth);
+  return Math.min(17, sourceDepth);
 }
+
+function extractSourceChunk(data, dims, start, end) {
+  const planeSize = dims[0] * dims[1];
+  return {
+    data: data.slice(start * planeSize, end * planeSize),
+    dims: [dims[0], dims[1], end - start]
+  };
+}
+
+function prepareSourceChunk(data, dims, affine, targetSpacing, cropMargin) {
+  const oriented = MuscleMapMonaiCompat.orientToRAS(data, dims, affine);
+  const sourceSpacing = MuscleMapMonaiCompat.affineSpacing(oriented.affine);
+  const actualTarget = targetSpacing.map((value, axis) => value > 0 ? value : sourceSpacing[axis]);
+  const needsResample = sourceSpacing.some((value, axis) => Math.abs(value - actualTarget[axis]) > 1e-3);
+  const spaced = needsResample
+    ? MuscleMapMonaiCompat.resampleVolume(oriented.data, oriented.dims, oriented.affine, targetSpacing)
+    : { data: oriented.data, dims: oriented.dims, affine: oriented.affine, spacing: sourceSpacing };
+  const normalized = zScoreNormalize(spaced.data, { nonzeroOnly: true });
+  const cropped = cropForeground(normalized, spaced.dims, cropMargin);
+  if (!cropped.data.length) throw new Error('No foreground voxels found in source chunk');
+  return {
+    data: cropped.data,
+    dims: cropped.dims,
+    cropOrigin: cropped.origin,
+    spacingDims: spaced.dims,
+    spacingAffine: spaced.affine,
+    orientedDims: oriented.dims,
+    orientedAffine: oriented.affine,
+    perm: oriented.perm,
+    flip: oriented.flip
+  };
+}
+
+async function inferSliceLogits({
+  session,
+  slice,
+  sizeX,
+  sizeY,
+  roiHeight,
+  roiWidth,
+  numClasses,
+  overlap,
+  gaussianWeights,
+  batchSize
+}) {
+  const inferHeight = Math.max(sizeX, roiHeight);
+  const inferWidth = Math.max(sizeY, roiWidth);
+  const transposed = MuscleMapSlidingWindowPolicy.transposeNiftiSliceToModelOrder(slice, sizeX, sizeY);
+  const padded = new Float32Array(inferHeight * inferWidth);
+  for (let x = 0; x < sizeX; x++) {
+    padded.set(transposed.subarray(x * sizeY, (x + 1) * sizeY), x * inferWidth);
+  }
+  const tiles = computeTilePositions(inferHeight, inferWidth, roiHeight, roiWidth, overlap);
+  const pixelCount = inferHeight * inferWidth;
+  const patchSize = roiHeight * roiWidth;
+  const logits = new Float32Array(pixelCount * numClasses);
+  const weightSum = new Float32Array(pixelCount);
+  const inputName = session.inputNames[0];
+  const outputName = session.outputNames[0];
+
+  for (let tileStart = 0; tileStart < tiles.length; tileStart += batchSize) {
+    const batchTiles = tiles.slice(tileStart, tileStart + batchSize);
+    const batchInput = new Float32Array(batchTiles.length * patchSize);
+    for (let batchIndex = 0; batchIndex < batchTiles.length; batchIndex++) {
+      const tile = batchTiles[batchIndex];
+      for (let patchY = 0; patchY < roiHeight; patchY++) {
+        const sourceOffset = (tile.y + patchY) * inferWidth + tile.x;
+        batchInput.set(
+          padded.subarray(sourceOffset, sourceOffset + roiWidth),
+          batchIndex * patchSize + patchY * roiWidth
+        );
+      }
+    }
+    const inputTensor = new ort.Tensor('float32', batchInput, [batchTiles.length, 1, roiHeight, roiWidth]);
+    const result = await session.run({ [inputName]: inputTensor });
+    const outputTensor = result[outputName];
+    const output = outputTensor.data;
+    inputTensor.dispose();
+
+    for (let batchIndex = 0; batchIndex < batchTiles.length; batchIndex++) {
+      const tile = batchTiles[batchIndex];
+      const batchOffset = batchIndex * numClasses * patchSize;
+      for (let patchY = 0; patchY < roiHeight; patchY++) {
+        for (let patchX = 0; patchX < roiWidth; patchX++) {
+          const patchPixel = patchY * roiWidth + patchX;
+          const pixel = (tile.y + patchY) * inferWidth + tile.x + patchX;
+          const weight = gaussianWeights[patchPixel];
+          weightSum[pixel] += weight;
+          const logitOffset = pixel * numClasses;
+          for (let label = 0; label < numClasses; label++) {
+            logits[logitOffset + label] += output[batchOffset + label * patchSize + patchPixel] * weight;
+          }
+        }
+      }
+    }
+    outputTensor.dispose?.();
+  }
+
+  for (let pixel = 0; pixel < pixelCount; pixel++) {
+    if (weightSum[pixel] <= 0) throw new Error(`Sliding-window coverage gap at pixel ${pixel}`);
+    const inverseWeight = 1 / weightSum[pixel];
+    const offset = pixel * numClasses;
+    for (let label = 0; label < numClasses; label++) logits[offset + label] *= inverseWeight;
+  }
+  return { logits, dims: [inferHeight, inferWidth] };
+}
+
+function writeInverseLogitSlice({
+  logits,
+  inferenceDims,
+  workingSlice,
+  workingDims,
+  cropOrigin,
+  spacingDims,
+  spacingAffine,
+  orientedDims,
+  orientedAffine,
+  perm,
+  flip,
+  chunkDims,
+  chunkLabels,
+  numClasses
+}) {
+  const gridTransform = MuscleMapMonaiCompat.createTorchGridTransform(
+    spacingAffine,
+    spacingDims,
+    orientedAffine,
+    orientedDims
+  );
+  const [inferHeight, inferWidth] = inferenceDims;
+  const [workingX, workingY] = workingDims;
+  const targetSpacingZ = workingSlice + cropOrigin[2];
+  const getLogit = (x, y, label) => {
+    if (x < 0 || x >= workingX || y < 0 || y >= workingY) return 0;
+    return logits[(x * inferWidth + y) * numClasses + label];
+  };
+
+  for (let orientedZ = 0; orientedZ < orientedDims[2]; orientedZ++) {
+    const center = MuscleMapMonaiCompat.torchGridSourcePoint(
+      gridTransform,
+      [0, 0, orientedZ],
+      spacingDims,
+      orientedDims
+    );
+    if (Math.abs(center[2] - targetSpacingZ) > 1e-3) continue;
+    const xCoordinates = Array.from({ length: orientedDims[0] }, (_, orientedX) =>
+      MuscleMapMonaiCompat.torchGridSourcePoint(
+        gridTransform,
+        [orientedX, 0, orientedZ],
+        spacingDims,
+        orientedDims
+      )[0] - cropOrigin[0]
+    );
+    const yCoordinates = Array.from({ length: orientedDims[1] }, (_, orientedY) =>
+      MuscleMapMonaiCompat.torchGridSourcePoint(
+        gridTransform,
+        [0, orientedY, orientedZ],
+        spacingDims,
+        orientedDims
+      )[1] - cropOrigin[1]
+    );
+    for (let orientedY = 0; orientedY < orientedDims[1]; orientedY++) {
+      for (let orientedX = 0; orientedX < orientedDims[0]; orientedX++) {
+        const x = xCoordinates[orientedX];
+        const y = yCoordinates[orientedY];
+        const x0 = Math.floor(x), x1 = x0 + 1, xWeight = x - x0;
+        const y0 = Math.floor(y), y1 = y0 + 1, yWeight = y - y0;
+        let bestLabel = 0;
+        let bestValue = -Infinity;
+        for (let label = 0; label < numClasses; label++) {
+          const top = getLogit(x0, y0, label) * (1 - xWeight) + getLogit(x1, y0, label) * xWeight;
+          const bottom = getLogit(x0, y1, label) * (1 - xWeight) + getLogit(x1, y1, label) * xWeight;
+          const value = top * (1 - yWeight) + bottom * yWeight;
+          if (value > bestValue) {
+            bestValue = value;
+            bestLabel = label;
+          }
+        }
+        const orientedPoint = [orientedX, orientedY, orientedZ];
+        const source = [0, 0, 0];
+        for (let axis = 0; axis < 3; axis++) {
+          source[perm[axis]] = flip[axis]
+            ? orientedDims[axis] - 1 - orientedPoint[axis]
+            : orientedPoint[axis];
+        }
+        const sourceIndex = source[0] + source[1] * chunkDims[0] + source[2] * chunkDims[0] * chunkDims[1];
+        chunkLabels[sourceIndex] = bestLabel;
+      }
+    }
+  }
+}
+
+async function emitUpstreamCompatibleOutput({
+  outputLabels,
+  numClasses,
+  imageData,
+  origDims,
+  origVoxelSize,
+  headerBytes,
+  labelCodec,
+  provenance,
+  calculateMetrics,
+  normalizedImfSettings
+}) {
+  const labelCounts = new Int32Array(numClasses);
+  for (let index = 0; index < outputLabels.length; index++) {
+    const label = outputLabels[index];
+    if (label > 0 && label < numClasses) labelCounts[label]++;
+  }
+  const detectedIndices = [];
+  for (let label = 1; label < numClasses; label++) {
+    if (labelCounts[label] > 0) detectedIndices.push(label);
+  }
+  postLog(`Detected ${detectedIndices.length} muscles`);
+  postDetectedLabels(detectedIndices);
+
+  if (calculateMetrics || normalizedImfSettings.enabled) {
+    const voxelVolMm3 = origVoxelSize[0] * origVoxelSize[1] * origVoxelSize[2];
+    const labelVolumes = {};
+    let totalVolumeMl = 0;
+    for (const label of detectedIndices) {
+      const volumeMl = labelCounts[label] * voxelVolMm3 / 1000;
+      labelVolumes[label] = volumeMl;
+      totalVolumeMl += volumeMl;
+    }
+    const { labelSliceCounts, sliceAxis, nSlices } = countLabelSlices(
+      outputLabels,
+      detectedIndices,
+      origDims,
+      origVoxelSize
+    );
+    const metrics = {
+      labelVolumes,
+      labelSliceCounts,
+      totalVolumeMl,
+      voxelSizeMm: origVoxelSize,
+      totalSlices: nSlices,
+      sliceAxis
+    };
+    if (normalizedImfSettings.enabled) {
+      postProgress(0.985, 'Calculating IMF...');
+      try {
+        metrics.imf = calculateImfMetrics(
+          imageData,
+          outputLabels,
+          detectedIndices,
+          labelCounts,
+          voxelVolMm3,
+          normalizedImfSettings
+        );
+      } catch (error) {
+        postLog(`Warning: IMF metrics failed: ${error.message}`);
+      }
+    }
+    postMetrics(metrics);
+  }
+
+  const externalLabels = labelCodec.encode(outputLabels);
+  postStageData(
+    'segmentation',
+    createOutputNifti(externalLabels, headerBytes, origDims),
+    'Muscle segmentation',
+    { ...provenance, encoding: 'sparse' }
+  );
+  postStageData(
+    'segmentation_display',
+    createOutputNifti(outputLabels, headerBytes, origDims),
+    'Muscle segmentation (display)',
+    { ...provenance, encoding: 'class-index' }
+  );
+
+  let foregroundVoxels = 0;
+  for (const label of outputLabels) {
+    if (label > 0) foregroundVoxels++;
+  }
+  postLog(`Output: ${foregroundVoxels} labeled voxels, ${detectedIndices.length} muscles`);
+  postProgress(1.0, 'Complete');
+  postComplete();
+}
+
 
 // ==================== Intramuscular Fat Metrics ====================
 
@@ -1262,19 +1171,6 @@ function calculateDixonImfMetrics(fatData, waterData, outputLabels, detectedIndi
   return result;
 }
 
-function toLabelArray(imageData) {
-  const labels = new Uint8Array(imageData.length);
-  for (let i = 0; i < imageData.length; i++) {
-    const label = Math.round(imageData[i]);
-    labels[i] = label > 0 && label < 256 ? label : 0;
-  }
-  return labels;
-}
-
-function dimsMatch(a, b) {
-  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
-}
-
 function consolidateLabelVolumes(labelVolumes) {
   if (labelVolumes.length === 1) return labelVolumes[0];
 
@@ -1386,23 +1282,46 @@ function computeVolumetricMetrics(outputLabels, origDims, origVoxelSize, numClas
   };
 }
 
-function parseSegmentationLabelVolumes(segmentationDataList, emptyMessage) {
-  if (!segmentationDataList.length) {
+function parseSegmentationLabelVolumes(segmentationInputs, emptyMessage) {
+  if (!segmentationInputs.length) {
     throw new Error(emptyMessage);
   }
 
-  const parsedSegmentations = segmentationDataList.map(data => parseNiftiInput(data));
-  const firstSegmentation = parsedSegmentations[0];
+  const expectedLabelSpaceId = segmentationInputs[0].labelSpaceId;
+  if (!expectedLabelSpaceId) throw new Error('Segmentation label-space attribution is required');
+  const parsedSegmentations = segmentationInputs.map(input => ({
+    input,
+    parsed: parseNiftiInput(input.data)
+  }));
+  const firstSegmentation = parsedSegmentations[0].parsed;
   const labelVolumes = [];
+  const inputLabelResolutions = [];
 
-  for (const parsed of parsedSegmentations) {
-    if (!dimsMatch(parsed.dims, firstSegmentation.dims)) {
-      throw new Error('All segmentation label maps must have identical dimensions');
+  for (const { input, parsed } of parsedSegmentations) {
+    if (input.labelSpaceId !== expectedLabelSpaceId || input.labelSpace?.id !== expectedLabelSpaceId) {
+      throw new Error('All segmentation label maps must use the same declared label space');
     }
-    labelVolumes.push(toLabelArray(parsed.imageData));
+    if (!MuscleMapLabelCodec.sameGeometry(parsed, firstSegmentation)) {
+      throw new Error('All segmentation label maps must have identical dimensions and affine geometry');
+    }
+    const codec = MuscleMapLabelCodec.createLabelCodec(input.labelSpace);
+    const normalized = codec.normalizeSegmentation(parsed.imageData, input.encoding);
+    labelVolumes.push(normalized.indices);
+    inputLabelResolutions.push({
+      ...normalized.resolution,
+      requestedEncoding: input.encoding,
+      summary: normalized.summary
+    });
+    parsed.imageData = null;
   }
 
-  return { firstSegmentation, labelVolumes };
+  return {
+    firstSegmentation,
+    labelVolumes,
+    inputLabelResolutions,
+    labelSpace: segmentationInputs[0].labelSpace,
+    labelSpaceId: expectedLabelSpaceId
+  };
 }
 
 function detectLabelIndices(outputLabels, numClasses) {
@@ -1422,7 +1341,7 @@ function detectLabelIndices(outputLabels, numClasses) {
 
 async function runMetricExtraction(config) {
   const {
-    segmentationDataList = [],
+    segmentationInputs = [],
     metricSourceData = null,
     dixonFatData = null,
     dixonWaterData = null,
@@ -1430,10 +1349,17 @@ async function runMetricExtraction(config) {
   } = config;
 
   postProgress(0.05, 'Reading segmentation...');
-  const { firstSegmentation, labelVolumes } = parseSegmentationLabelVolumes(
-    segmentationDataList,
+  const {
+    firstSegmentation,
+    labelVolumes,
+    inputLabelResolutions,
+    labelSpace,
+    labelSpaceId
+  } = parseSegmentationLabelVolumes(
+    segmentationInputs,
     'No segmentation data provided for metrics'
   );
+  for (const resolution of inputLabelResolutions) postLog(resolution.summary);
 
   const outputLabels = settings.consolidateSegmentations
     ? consolidateLabelVolumes(labelVolumes)
@@ -1443,7 +1369,7 @@ async function runMetricExtraction(config) {
     outputLabels,
     firstSegmentation.dims,
     firstSegmentation.voxelSize,
-    settings.numClasses || 256
+    labelSpace.classCount
   );
 
   postLog(`Detected ${metricsBase.detectedIndices.length} muscles`);
@@ -1459,8 +1385,8 @@ async function runMetricExtraction(config) {
         throw new Error('Threshold IMF metrics require one source image');
       }
       const source = parseNiftiInput(metricSourceData);
-      if (!dimsMatch(source.dims, firstSegmentation.dims)) {
-        throw new Error('Metric source image and segmentation must have identical dimensions');
+      if (!MuscleMapLabelCodec.sameGeometry(source, firstSegmentation)) {
+        throw new Error('Metric source image and segmentation must have identical dimensions and affine geometry');
       }
       imfThreshold = calculateImfMetrics(
         source.imageData,
@@ -1478,8 +1404,9 @@ async function runMetricExtraction(config) {
       }
       const fat = parseNiftiInput(dixonFatData);
       const water = parseNiftiInput(dixonWaterData);
-      if (!dimsMatch(fat.dims, firstSegmentation.dims) || !dimsMatch(water.dims, firstSegmentation.dims)) {
-        throw new Error('Dixon fat, water, and segmentation images must have identical dimensions');
+      if (!MuscleMapLabelCodec.sameGeometry(fat, firstSegmentation) ||
+          !MuscleMapLabelCodec.sameGeometry(water, firstSegmentation)) {
+        throw new Error('Dixon fat, water, and segmentation images must have identical dimensions and affine geometry');
       }
       imfDixon = calculateDixonImfMetrics(
         fat.imageData,
@@ -1510,11 +1437,22 @@ async function runMetricExtraction(config) {
     metrics.imfDixon = imfDixon;
   }
 
-  const outputNifti = createOutputNifti(outputLabels, firstSegmentation.headerBytes, firstSegmentation.dims);
+  const outputNifti = createOutputNifti(
+    MuscleMapLabelCodec.createLabelCodec(labelSpace).encode(outputLabels),
+    firstSegmentation.headerBytes,
+    firstSegmentation.dims
+  );
   postStageData(
     'segmentation',
     outputNifti,
-    settings.consolidateSegmentations ? 'Consolidated muscle segmentation' : 'Muscle segmentation'
+    settings.consolidateSegmentations ? 'Consolidated muscle segmentation' : 'Muscle segmentation',
+    { labelSpaceId, encoding: 'sparse', inputLabelResolutions }
+  );
+  postStageData(
+    'segmentation_display',
+    createOutputNifti(outputLabels, firstSegmentation.headerBytes, firstSegmentation.dims),
+    'Muscle segmentation (display)',
+    { labelSpaceId, encoding: 'class-index' }
   );
   postMetrics(metrics);
   postProgress(1.0, 'Complete');
@@ -1523,28 +1461,50 @@ async function runMetricExtraction(config) {
 
 async function runConsolidationOnly(config) {
   const {
-    segmentationDataList = [],
+    segmentationInputs = [],
     settings = {}
   } = config;
 
-  if (segmentationDataList.length < 2) {
+  if (segmentationInputs.length < 2) {
     throw new Error('At least two segmentation label maps are required for consolidation');
   }
 
   postProgress(0.05, 'Reading segmentations...');
-  const { firstSegmentation, labelVolumes } = parseSegmentationLabelVolumes(
-    segmentationDataList,
+  const {
+    firstSegmentation,
+    labelVolumes,
+    inputLabelResolutions,
+    labelSpace,
+    labelSpaceId
+  } = parseSegmentationLabelVolumes(
+    segmentationInputs,
     'No segmentation data provided for consolidation'
   );
+  for (const resolution of inputLabelResolutions) postLog(resolution.summary);
 
   postProgress(0.45, 'Consolidating segmentations...');
   const outputLabels = consolidateLabelVolumes(labelVolumes);
-  const detectedIndices = detectLabelIndices(outputLabels, settings.numClasses || 256);
+  const detectedIndices = detectLabelIndices(outputLabels, labelSpace.classCount);
   postLog(`Detected ${detectedIndices.length} muscles in consolidated segmentation`);
   postDetectedLabels(detectedIndices);
 
-  const outputNifti = createOutputNifti(outputLabels, firstSegmentation.headerBytes, firstSegmentation.dims);
-  postStageData('segmentation', outputNifti, 'Consolidated muscle segmentation');
+  const outputNifti = createOutputNifti(
+    MuscleMapLabelCodec.createLabelCodec(labelSpace).encode(outputLabels),
+    firstSegmentation.headerBytes,
+    firstSegmentation.dims
+  );
+  postStageData(
+    'segmentation',
+    outputNifti,
+    'Consolidated muscle segmentation',
+    { labelSpaceId, encoding: 'sparse', inputLabelResolutions }
+  );
+  postStageData(
+    'segmentation_display',
+    createOutputNifti(outputLabels, firstSegmentation.headerBytes, firstSegmentation.dims),
+    'Consolidated muscle segmentation (display)',
+    { labelSpaceId, encoding: 'class-index' }
+  );
   postProgress(1.0, 'Complete');
   postComplete();
 }
@@ -1554,12 +1514,10 @@ async function runConsolidationOnly(config) {
 async function runInference(config) {
   const { inputData, settings } = config;
   const {
-    modelName = 'musclemap-wholebody.onnx',
-    numClasses: numClassesSetting,
-    roiSize: roiSizeSetting,
-    overlap = 0.5,
+    model,
+    overlap = 0.9,
     chunkSize: chunkSizeSetting = 'auto',
-    modelBaseUrl,
+    sourceChunkSize: sourceChunkSizeSetting = 17,
     useWebGPU: useWebGPUSetting,
     sliceThickness = -1,
     lowRes = false,
@@ -1567,10 +1525,22 @@ async function runInference(config) {
     imfMetrics = {}
   } = settings;
 
-  // Override WebGPU setting per-run (user may have toggled the checkbox)
+  if (!model?.asset || !model?.labelSpace) {
+    throw new Error('Inference requires a published model descriptor with a label space');
+  }
+  const modelName = model.filename;
+  const numClassesSetting = model.numClasses;
+  const roiSizeSetting = model.roiSize;
+  const labelCodec = MuscleMapLabelCodec.createLabelCodec(model.labelSpace);
+  const provenance = {
+    modelId: model.id,
+    modelVersion: model.modelVersion,
+    labelSpaceId: model.labelSpaceId,
+    assetSha256: model.asset.sha256
+  };
+
   const useWebGPU = self._useWebGPU && (useWebGPUSetting !== false);
   if (!useWebGPU && self._useWebGPU) {
-    // User forced WASM — use max threads
     const maxThreads = getOptimalWasmThreads();
     ort.env.wasm.numThreads = maxThreads;
     postLog(`Forcing WASM backend with ${maxThreads} threads`);
@@ -1579,10 +1549,10 @@ async function runInference(config) {
   const NUM_CLASSES = numClassesSetting || 100;
   const [ROI_H, ROI_W] = roiSizeSetting || [256, 256];
   const TARGET_SPACING = [1.0, 1.0, (sliceThickness > 0) ? sliceThickness : -1];
+  const UPSTREAM_TARGET_SPACING = model.preprocessing?.targetSpacing || [1.0, 1.0, -1];
   const CROP_MARGIN = 20;
   const normalizedImfSettings = normalizeImfSettings(imfMetrics);
 
-  // 1. Parse NIfTI
   postLog('Parsing input volume...');
   postProgress(0.02, 'Reading NIfTI...');
   const { imageData, dims, voxelSize, headerBytes, affine } = parseNiftiInput(inputData);
@@ -1592,7 +1562,130 @@ async function runInference(config) {
   const origDims = [...dims];
   const origVoxelSize = [...voxelSize];
 
-  // 2. Orient to RAS
+  const modelVersion = Number.parseFloat(model.modelVersion);
+  const useUpstreamCompatiblePipeline = model.id === 'wholebody' && modelVersion >= 1.4;
+  if (useUpstreamCompatiblePipeline) {
+    if (sliceThickness > 0) {
+      postLog('Ignoring the legacy slice-thickness control; MuscleMap v1.4 uses its pinned native through-plane spacing');
+    }
+    if (lowRes) {
+      postLog('Low-res cleanup is disabled for MuscleMap v1.4 upstream compatibility');
+    }
+
+    const sourceChunkSize = resolveSourceChunkSize(sourceChunkSizeSetting, nz);
+    const sourceChunkCount = Math.ceil(nz / sourceChunkSize);
+    const inferenceBatchSize = resolveChunkSize(chunkSizeSetting, NUM_CLASSES, ROI_H, ROI_W);
+    postLog(
+      `Upstream-compatible pipeline: ${sourceChunkCount} source chunks of up to ${sourceChunkSize} slices, ` +
+      `overlap=${overlap}, inference batch=${inferenceBatchSize}`
+    );
+
+    const modelData = await fetchModel(model.asset, modelName, 0.05, 0.18);
+    postProgress(0.23, 'Loading ONNX model...');
+    const executionProviders = useWebGPU ? ['webgpu', 'wasm'] : ['wasm'];
+    const session = await ort.InferenceSession.create(modelData, {
+      executionProviders,
+      graphOptimizationLevel: 'all'
+    });
+    postLog(`Session created. Input: ${session.inputNames}, Output: ${session.outputNames}`);
+
+    const outputLabels = new Uint8Array(nx * ny * nz);
+    const gaussianWeights = computeGaussianWeightMap(ROI_H, ROI_W);
+    const inferenceStartTime = performance.now();
+    let processedWorkingSlices = 0;
+    let estimatedWorkingSlices = sourceChunkCount * Math.max(nx, ny);
+
+    try {
+      for (let chunkIndex = 0, start = 0; start < nz; chunkIndex++, start += sourceChunkSize) {
+        const end = Math.min(start + sourceChunkSize, nz);
+        const sourceChunk = extractSourceChunk(imageData, dims, start, end);
+        postProgress(0.25 + 0.60 * (chunkIndex / sourceChunkCount), `Preprocessing source slices ${start + 1}-${end}/${nz}`);
+        const prepared = prepareSourceChunk(
+          sourceChunk.data,
+          sourceChunk.dims,
+          affine,
+          UPSTREAM_TARGET_SPACING,
+          CROP_MARGIN
+        );
+        const [workingX, workingY, workingZ] = prepared.dims;
+        estimatedWorkingSlices = sourceChunkCount * workingZ;
+        postLog(
+          `Source chunk ${chunkIndex + 1}/${sourceChunkCount}: ${start}:${end} -> ` +
+          `${Math.max(workingX, ROI_H)}x${Math.max(workingY, ROI_W)}x${workingZ}`
+        );
+        const chunkLabels = new Uint8Array(sourceChunk.data.length);
+        const workingPlane = workingX * workingY;
+
+        for (let workingSlice = 0; workingSlice < workingZ; workingSlice++) {
+          const slice = prepared.data.subarray(
+            workingSlice * workingPlane,
+            (workingSlice + 1) * workingPlane
+          );
+          const inference = await inferSliceLogits({
+            session,
+            slice,
+            sizeX: workingX,
+            sizeY: workingY,
+            roiHeight: ROI_H,
+            roiWidth: ROI_W,
+            numClasses: NUM_CLASSES,
+            overlap,
+            gaussianWeights,
+            batchSize: inferenceBatchSize
+          });
+          writeInverseLogitSlice({
+            logits: inference.logits,
+            inferenceDims: inference.dims,
+            workingSlice,
+            workingDims: prepared.dims,
+            cropOrigin: prepared.cropOrigin,
+            spacingDims: prepared.spacingDims,
+            spacingAffine: prepared.spacingAffine,
+            orientedDims: prepared.orientedDims,
+            orientedAffine: prepared.orientedAffine,
+            perm: prepared.perm,
+            flip: prepared.flip,
+            chunkDims: sourceChunk.dims,
+            chunkLabels,
+            numClasses: NUM_CLASSES
+          });
+          processedWorkingSlices++;
+          if (workingSlice % 5 === 0 || workingSlice === workingZ - 1) {
+            const elapsedSeconds = (performance.now() - inferenceStartTime) / 1000;
+            const remainingSlices = Math.max(estimatedWorkingSlices - processedWorkingSlices, 0);
+            const etaSeconds = elapsedSeconds / processedWorkingSlices * remainingSlices;
+            postProgress(
+              0.25 + 0.60 * Math.min(processedWorkingSlices / estimatedWorkingSlices, 1),
+              `Chunk ${chunkIndex + 1}/${sourceChunkCount}, slice ${workingSlice + 1}/${workingZ} (ETA: ${etaSeconds.toFixed(0)}s)`
+            );
+          }
+        }
+        outputLabels.set(chunkLabels, start * nx * ny);
+      }
+    } finally {
+      await session.release();
+    }
+
+    const totalTime = ((performance.now() - inferenceStartTime) / 1000).toFixed(1);
+    postLog(`Inference complete: ${processedWorkingSlices} working slices in ${totalTime}s`);
+    postProgress(0.86, 'Cleaning labels...');
+    postLog('Keeping the largest 6-connected component for each class in the full source volume...');
+    const cleanedLabels = perLabelLargestComponent(outputLabels, origDims, NUM_CLASSES - 1, 0.86, 0.10);
+    await emitUpstreamCompatibleOutput({
+      outputLabels: cleanedLabels,
+      numClasses: NUM_CLASSES,
+      imageData,
+      origDims,
+      origVoxelSize,
+      headerBytes,
+      labelCodec,
+      provenance,
+      calculateMetrics,
+      normalizedImfSettings
+    });
+    return;
+  }
+
   postProgress(0.05, 'Orienting to RAS...');
   postLog('Orienting to RAS...');
   const { perm, flip } = getOrientationTransform(affine);
@@ -1607,7 +1700,6 @@ async function runInference(config) {
     const oriented = orientToRAS(imageData, dims, perm, flip);
     currentData = oriented.data;
     currentDims = oriented.dims;
-    // Reorder spacing according to permutation
     currentSpacing = [voxelSize[perm[0]], voxelSize[perm[1]], voxelSize[perm[2]]];
   }
   postLog(`RAS dims: ${currentDims.join('x')}`);
@@ -1615,7 +1707,6 @@ async function runInference(config) {
   const rasDims = [...currentDims];
   const rasSpacing = [...currentSpacing];
 
-  // 3. Resample to target spacing
   postProgress(0.08, 'Resampling...');
   const needsResample = Math.abs(currentSpacing[0] - TARGET_SPACING[0]) > 0.01 ||
                          Math.abs(currentSpacing[1] - TARGET_SPACING[1]) > 0.01 ||
@@ -1632,12 +1723,10 @@ async function runInference(config) {
   }
   resampledDims = [...currentDims];
 
-  // 4. Normalize
   postProgress(0.10, 'Normalizing...');
   postLog('Z-score normalizing (nonzero voxels)...');
-  currentData = zScoreNormalizeNonzero(currentData);
+  currentData = zScoreNormalize(currentData, { nonzeroOnly: true });
 
-  // 5. Crop foreground
   postProgress(0.12, 'Cropping foreground...');
   const cropped = cropForeground(currentData, currentDims, CROP_MARGIN);
   if (cropped.dims[0] === 0) {
@@ -1648,9 +1737,7 @@ async function runInference(config) {
   const cropOrigin = cropped.origin;
   postLog(`Cropped: ${currentDims.join('x')} (origin: ${cropOrigin.join(',')})`);
 
-  // 6. Download and load model
-  const modelUrl = `${modelBaseUrl}/${modelName}`;
-  const modelData = await fetchModel(modelUrl, modelName, 0.15, 0.15);
+  const modelData = await fetchModel(model.asset, modelName, 0.15, 0.15);
 
   postProgress(0.30, 'Loading ONNX model...');
   const executionProviders = useWebGPU ? ['webgpu', 'wasm'] : ['wasm'];
@@ -1661,10 +1748,8 @@ async function runInference(config) {
   });
   postLog(`Session created. Input: ${session.inputNames}, Output: ${session.outputNames}`);
 
-  // 7. Precompute Gaussian weight map
   const gaussianWeights = computeGaussianWeightMap(ROI_H, ROI_W);
 
-  // 8. Slice-by-slice inference
   const [cnx, cny, cnz] = currentDims;
   const labelVolume = new Uint8Array(cnx * cny * cnz);
   const sliceSize = cnx * cny;
@@ -1675,33 +1760,26 @@ async function runInference(config) {
   const inferenceStartTime = performance.now();
 
   for (let z = 0; z < cnz; z++) {
-    // Extract axial slice
     const slice = currentData.subarray(z * sliceSize, (z + 1) * sliceSize);
 
-    // Check if slice has any data
     let hasData = false;
     for (let i = 0; i < sliceSize; i++) {
       if (slice[i] !== 0) { hasData = true; break; }
     }
 
     if (!hasData) {
-      // Skip empty slices
       if (z % 20 === 0) {
         postProgress(0.32 + 0.50 * (z / cnz), `Slice ${z+1}/${cnz} (empty)`);
       }
       continue;
     }
 
-    // Transpose slice from NIfTI Fortran order to model order (rows=X, cols=Y)
-    // NIfTI: slice[x + y*cnx], Model expects: transposed[x*cny + y]
-    const transposed = new Float32Array(sliceSize);
-    for (let x = 0; x < cnx; x++) {
-      for (let y = 0; y < cny; y++) {
-        transposed[x * cny + y] = slice[x + y * cnx];
-      }
-    }
+    const transposed = MuscleMapSlidingWindowPolicy.transposeNiftiSliceToModelOrder(
+      slice,
+      cnx,
+      cny
+    );
 
-    // Pad transposed slice if smaller than ROI (height=cnx, width=cny after transpose)
     let inferH = cnx, inferW = cny;
     let paddedSlice = transposed;
     let padOffsetX = 0, padOffsetY = 0;
@@ -1710,8 +1788,8 @@ async function runInference(config) {
       inferH = Math.max(cnx, ROI_H);
       inferW = Math.max(cny, ROI_W);
       paddedSlice = new Float32Array(inferH * inferW);
-      padOffsetY = Math.floor((inferH - cnx) / 2);
-      padOffsetX = Math.floor((inferW - cny) / 2);
+      padOffsetY = 0;
+      padOffsetX = 0;
       for (let r = 0; r < cnx; r++) {
         paddedSlice.set(
           transposed.subarray(r * cny, r * cny + cny),
@@ -1720,120 +1798,103 @@ async function runInference(config) {
       }
     }
 
-    // Compute tiles
     const tiles = computeTilePositions(inferH, inferW, ROI_H, ROI_W, overlap);
 
-    // Accumulation buffers for this slice
-    const accumSize = NUM_CLASSES * inferH * inferW;
-    let accum, weightSum;
+    const blocks = MuscleMapSlidingWindowPolicy.computeAccumulatorBlocks(
+      inferH,
+      inferW,
+      NUM_CLASSES
+    );
+    const inputName = session.inputNames[0];
+    const outputName = session.outputNames[0];
+    const patchSize = ROI_H * ROI_W;
 
-    if (accumSize <= 100_000_000) {
-      // Full accumulation — pixel-major layout: accum[pixel * NUM_CLASSES + class]
-      accum = new Float32Array(accumSize);
-      weightSum = new Float32Array(inferH * inferW);
+    for (const block of blocks) {
+      const blockPixelCount = block.width * block.height;
+      const accum = new Float32Array(blockPixelCount * NUM_CLASSES);
+      const weightSum = new Float32Array(blockPixelCount);
+      const blockTiles = tiles.filter(tile => MuscleMapSlidingWindowPolicy.intersects(block, {
+        x: tile.x,
+        y: tile.y,
+        width: ROI_W,
+        height: ROI_H
+      }));
 
-      const inputName = session.inputNames[0];
-      const outputName = session.outputNames[0];
-      const pixelCount = inferH * inferW;
-      const patchSize = ROI_H * ROI_W;
-
-      // Process tiles in chunks
-      for (let ti = 0; ti < tiles.length; ti += resolvedChunkSize) {
-        const chunkTiles = tiles.slice(ti, ti + resolvedChunkSize);
-        const N = chunkTiles.length;
-
-        // Build batched input [N, 1, ROI_H, ROI_W]
-        const batchInput = new Float32Array(N * patchSize);
-        for (let b = 0; b < N; b++) {
-          const tile = chunkTiles[b];
-          for (let py = 0; py < ROI_H; py++) {
-            const srcOff = (tile.y + py) * inferW + tile.x;
-            const dstOff = b * patchSize + py * ROI_W;
-            batchInput.set(paddedSlice.subarray(srcOff, srcOff + ROI_W), dstOff);
+      for (let ti = 0; ti < blockTiles.length; ti += resolvedChunkSize) {
+        const chunkTiles = blockTiles.slice(ti, ti + resolvedChunkSize);
+        const batchInput = new Float32Array(chunkTiles.length * patchSize);
+        for (let batchIndex = 0; batchIndex < chunkTiles.length; batchIndex++) {
+          const tile = chunkTiles[batchIndex];
+          for (let patchY = 0; patchY < ROI_H; patchY++) {
+            const sourceOffset = (tile.y + patchY) * inferW + tile.x;
+            const destinationOffset = batchIndex * patchSize + patchY * ROI_W;
+            batchInput.set(paddedSlice.subarray(sourceOffset, sourceOffset + ROI_W), destinationOffset);
           }
         }
 
-        // Run batched inference
-        const inputTensor = new ort.Tensor('float32', batchInput, [N, 1, ROI_H, ROI_W]);
+        const inputTensor = new ort.Tensor(
+          'float32',
+          batchInput,
+          [chunkTiles.length, 1, ROI_H, ROI_W]
+        );
         const results = await session.run({ [inputName]: inputTensor });
-        const output = results[outputName].data;  // class-major: [N, C, H, W]
+        const outputTensor = results[outputName];
+        const output = outputTensor.data;
         inputTensor.dispose();
 
-        // Accumulate Gaussian-weighted predictions (pixel-major) + weight sum in one pass
         const outputPerTile = NUM_CLASSES * patchSize;
-        for (let b = 0; b < N; b++) {
-          const tile = chunkTiles[b];
-          const batchOffset = b * outputPerTile;
+        for (let batchIndex = 0; batchIndex < chunkTiles.length; batchIndex++) {
+          const tile = chunkTiles[batchIndex];
+          const startY = Math.max(block.y, tile.y);
+          const endY = Math.min(block.y + block.height, tile.y + ROI_H);
+          const startX = Math.max(block.x, tile.x);
+          const endX = Math.min(block.x + block.width, tile.x + ROI_W);
+          const batchOffset = batchIndex * outputPerTile;
 
-          for (let py = 0; py < ROI_H; py++) {
-            const gwRowOff = py * ROI_W;
-            const gyIdx = (tile.y + py) * inferW + tile.x;
-            for (let px = 0; px < ROI_W; px++) {
-              const gw = gaussianWeights[gwRowOff + px];
-              const gIdx = gyIdx + px;
-              weightSum[gIdx] += gw;
-              const accumBase = gIdx * NUM_CLASSES;
-              const outPixel = gwRowOff + px;  // py * ROI_W + px
-              for (let c = 0; c < NUM_CLASSES; c++) {
-                accum[accumBase + c] += output[batchOffset + c * patchSize + outPixel] * gw;
+          for (let globalY = startY; globalY < endY; globalY++) {
+            const patchY = globalY - tile.y;
+            for (let globalX = startX; globalX < endX; globalX++) {
+              const patchX = globalX - tile.x;
+              const patchPixel = patchY * ROI_W + patchX;
+              const blockPixel = (globalY - block.y) * block.width + globalX - block.x;
+              const weight = gaussianWeights[patchPixel];
+              weightSum[blockPixel] += weight;
+              const accumOffset = blockPixel * NUM_CLASSES;
+              for (let classIndex = 0; classIndex < NUM_CLASSES; classIndex++) {
+                accum[accumOffset + classIndex] +=
+                  output[batchOffset + classIndex * patchSize + patchPixel] * weight;
               }
             }
           }
         }
+        outputTensor.dispose?.();
       }
 
-      // Argmax for this slice — stride-1 access in pixel-major layout
-      for (let i = 0; i < pixelCount; i++) {
-        if (weightSum[i] === 0) continue;
-        const base = i * NUM_CLASSES;
-        let bestClass = 0, bestVal = accum[base];
-        for (let c = 1; c < NUM_CLASSES; c++) {
-          const val = accum[base + c];
-          if (val > bestVal) { bestVal = val; bestClass = c; }
+      for (let blockPixel = 0; blockPixel < blockPixelCount; blockPixel++) {
+        if (weightSum[blockPixel] === 0) {
+          throw new Error(`Sliding-window coverage gap at slice ${z}, block pixel ${blockPixel}`);
+        }
+        const accumOffset = blockPixel * NUM_CLASSES;
+        let bestClass = 0;
+        let bestValue = accum[accumOffset];
+        for (let classIndex = 1; classIndex < NUM_CLASSES; classIndex++) {
+          const value = accum[accumOffset + classIndex];
+          if (value > bestValue) {
+            bestValue = value;
+            bestClass = classIndex;
+          }
         }
 
-        // Map back from padded coords to original volume (Fortran order)
-        // After transpose: rows=X, cols=Y
-        const pr = Math.floor(i / inferW);
-        const pc = i % inferW;
-        const ox = pr - padOffsetY;  // row → X spatial
-        const oy = pc - padOffsetX;  // col → Y spatial
-        if (ox >= 0 && ox < cnx && oy >= 0 && oy < cny) {
-          labelVolume[z * sliceSize + oy * cnx + ox] = bestClass;
-        }
-      }
-    } else {
-      // Very large slice: single centered patch fallback
-      const patch = new Float32Array(ROI_H * ROI_W);
-      const cy = Math.max(0, Math.floor((inferH - ROI_H) / 2));
-      const cx = Math.max(0, Math.floor((inferW - ROI_W) / 2));
-      for (let py = 0; py < ROI_H; py++) {
-        const srcOff = (cy + py) * inferW + cx;
-        patch.set(paddedSlice.subarray(srcOff, srcOff + ROI_W), py * ROI_W);
-      }
-      const inputTensor = new ort.Tensor('float32', patch, [1, 1, ROI_H, ROI_W]);
-      const results = await session.run({ [session.inputNames[0]]: inputTensor });
-      const output = results[session.outputNames[0]].data;
-      inputTensor.dispose();
-
-      for (let py = 0; py < ROI_H; py++) {
-        for (let px = 0; px < ROI_W; px++) {
-          let bestClass = 0, bestVal = -Infinity;
-          for (let c = 0; c < NUM_CLASSES; c++) {
-            const val = output[c * ROI_H * ROI_W + py * ROI_W + px];
-            if (val > bestVal) { bestVal = val; bestClass = c; }
-          }
-          // After transpose: rows=X, cols=Y
-          const ox = (cy + py) - padOffsetY;  // row → X spatial
-          const oy = (cx + px) - padOffsetX;  // col → Y spatial
-          if (ox >= 0 && ox < cnx && oy >= 0 && oy < cny) {
-            labelVolume[z * sliceSize + oy * cnx + ox] = bestClass;
-          }
+        const paddedY = block.y + Math.floor(blockPixel / block.width);
+        const paddedX = block.x + blockPixel % block.width;
+        const outputX = paddedY - padOffsetY;
+        const outputY = paddedX - padOffsetX;
+        if (outputX >= 0 && outputX < cnx && outputY >= 0 && outputY < cny) {
+          labelVolume[z * sliceSize + outputY * cnx + outputX] = bestClass;
         }
       }
     }
 
-    // Progress reporting
     if (z % 5 === 0 || z === cnz - 1) {
       const elapsed = (performance.now() - inferenceStartTime) / 1000;
       const eta = (elapsed / (z + 1)) * (cnz - z - 1);
@@ -1844,7 +1905,6 @@ async function runInference(config) {
   const totalTime = ((performance.now() - inferenceStartTime) / 1000).toFixed(1);
   postLog(`Inference complete: ${cnz} slices in ${totalTime}s`);
 
-  // Release session
   await session.release();
 
   let outputLabels;
@@ -1866,7 +1926,6 @@ async function runInference(config) {
     outputLabels = perLabelLargestComponent(transformedLabels, origDims, NUM_CLASSES - 1, 0.90, 0.08);
   }
 
-  // Count detected labels
   const labelCounts = new Int32Array(NUM_CLASSES);
   for (let i = 0; i < outputLabels.length; i++) {
     if (outputLabels[i] > 0 && outputLabels[i] < NUM_CLASSES) {
@@ -1938,27 +1997,31 @@ async function runInference(config) {
     postMetrics(metrics);
   }
 
-  // 11. Create output NIfTI (full resolution for download)
-  const outputNifti = createOutputNifti(outputLabels, headerBytes, origDims);
-  postStageData('segmentation', outputNifti, 'Muscle segmentation');
+  const externalLabels = labelCodec.encode(outputLabels);
+  const outputNifti = createOutputNifti(externalLabels, headerBytes, origDims);
+  postStageData('segmentation', outputNifti, 'Muscle segmentation', {
+    ...provenance,
+    encoding: 'sparse'
+  });
 
-  // 12. Create downsampled display NIfTI for faster 3D rendering (when z was resampled)
   const zWasResampled = TARGET_SPACING[2] > 0 && Math.abs(rasSpacing[2] - TARGET_SPACING[2]) > 0.01;
   const DISPLAY_MAX_DIM = 128;
   const maxDim = Math.max(...origDims);
+  let displayLabels = outputLabels;
+  let displayDims = origDims;
   if (zWasResampled && maxDim > DISPLAY_MAX_DIM) {
     const scale = DISPLAY_MAX_DIM / maxDim;
-    const displayDims = origDims.map(d => Math.max(1, Math.round(d * scale)));
-    const displayLabels = resampleLabelsNearest(outputLabels, origDims, displayDims);
-    const displayNifti = createOutputNifti(displayLabels, headerBytes, displayDims);
-    // Adjust pixdims and affine for the downsampled resolution
+    displayDims = origDims.map(d => Math.max(1, Math.round(d * scale)));
+    displayLabels = resampleLabelsNearest(outputLabels, origDims, displayDims);
+  }
+  const displayNifti = createOutputNifti(displayLabels, headerBytes, displayDims);
+  if (displayDims !== origDims) {
     const dv = new DataView(displayNifti);
     const srcView = new DataView(headerBytes);
     for (let i = 1; i <= 3; i++) {
       const origPixdim = Math.abs(srcView.getFloat32(76 + i * 4, true));
       dv.setFloat32(76 + i * 4, origPixdim * origDims[i-1] / displayDims[i-1], true);
     }
-    // Scale sform affine row vectors to match new voxel size
     for (let row = 0; row < 3; row++) {
       for (let col = 0; col < 3; col++) {
         const offset = 280 + row * 16 + col * 4;
@@ -1966,8 +2029,11 @@ async function runInference(config) {
         dv.setFloat32(offset, val * origDims[col] / displayDims[col], true);
       }
     }
-    postStageData('segmentation_display', displayNifti, 'Muscle segmentation (display)');
   }
+  postStageData('segmentation_display', displayNifti, 'Muscle segmentation (display)', {
+    ...provenance,
+    encoding: 'class-index'
+  });
 
   let totalVoxels = 0;
   for (let i = 0; i < outputLabels.length; i++) {
@@ -1981,13 +2047,15 @@ async function runInference(config) {
 
 // ==================== Message Handler ====================
 
-self.onmessage = async (e) => {
-  const { type, data } = e.data;
+installWorkerRouter({
+  scope: self,
+  getServices: loadDependencies,
+  handle: async ({ type, data, ...message }) => {
 
   switch (type) {
     case 'init':
       try {
-        self._appVersion = e.data.version || '';
+        self._appVersion = message.version || '';
         ort.env.wasm.numThreads = getOptimalWasmThreads();
         ort.env.wasm.wasmPaths = '../wasm/';
 
@@ -2013,7 +2081,7 @@ self.onmessage = async (e) => {
           storeName: 'models'
         });
 
-        self.postMessage({ type: 'initialized', webgpuAvailable: self._useWebGPU });
+        workerMessages.initialized({ webgpuAvailable: self._useWebGPU });
       } catch (error) {
         postError(`Initialization failed: ${error.message}`);
       }
@@ -2046,4 +2114,5 @@ self.onmessage = async (e) => {
       }
       break;
   }
-};
+  }
+});

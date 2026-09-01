@@ -1,6 +1,6 @@
-import { FileIOController } from './controllers/FileIOController.js';
-import { ViewerController } from './controllers/ViewerController.js';
-import { InferenceExecutor } from './controllers/InferenceExecutor.js';
+import { SimpleFileIOController } from '@neurodesk/webapp-components/file-io';
+import { ViewerController } from '@neurodesk/webapp-components';
+import { CalmarPipeline } from './controllers/CalmarPipeline.js';
 import { MaskDrawingController } from './controllers/MaskDrawingController.js';
 import { LNM_PIPELINES, getPipelineById } from './app/lnm-tasks.js';
 import {
@@ -49,7 +49,7 @@ import {
   rankFunctionalTerms,
   renderFunctionalProfileTable
 } from './modules/function-profiles.js';
-import { ConsoleOutput } from './modules/ui/ConsoleOutput.js';
+import { CalmarConsoleOutput } from './modules/ui/CalmarConsoleOutput.js';
 import { ProgressManager } from '@neurodesk/webapp-components/ui';
 import { ModalManager } from '@neurodesk/webapp-components/ui';
 import * as Config from './app/config.js';
@@ -244,8 +244,8 @@ export class LesionNetworkMappingApp {
       onLocationChange: (data) => this.updateViewerInfo(data)
     });
 
-    this.console = new ConsoleOutput('consoleOutput', { copyButtonId: 'copyConsole' });
-    this.technicalConsole = new ConsoleOutput('technicalConsoleOutput', {
+    this.console = new CalmarConsoleOutput('consoleOutput', { copyButtonId: 'copyConsole' });
+    this.technicalConsole = new CalmarConsoleOutput('technicalConsoleOutput', {
       copyButtonId: 'copyTechnicalConsole',
       mirrorToBrowserConsole: false
     });
@@ -319,7 +319,7 @@ export class LesionNetworkMappingApp {
       atlasQc: true
     };
 
-    this.executor = new InferenceExecutor({
+    this.executor = new CalmarPipeline({
       updateOutput: (msg) => this.updateOutput(msg),
       updateDebugOutput: (msg, options) => this.updateDebugOutput(msg, options),
       setProgress: (frac, label) => this.handleWorkerProgress(frac, label),
@@ -334,11 +334,13 @@ export class LesionNetworkMappingApp {
   }
 
   async init() {
-    this.structuralFileIO = new FileIOController({
+    this.structuralFileIO = new SimpleFileIOController({
+      dcm2niixModuleUrl: new URL('../dcm2niix/index.js', import.meta.url).href,
       updateOutput: (msg) => this.updateOutput(msg),
       onFileLoaded: (file) => this.setStructural(file)
     });
-    this.lesionFileIO = new FileIOController({
+    this.lesionFileIO = new SimpleFileIOController({
+      dcm2niixModuleUrl: new URL('../dcm2niix/index.js', import.meta.url).href,
       updateOutput: (msg) => this.updateOutput(msg),
       onFileLoaded: (file) => this.setLesion(file)
     });

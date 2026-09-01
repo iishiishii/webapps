@@ -4,8 +4,8 @@
  * Re-exports all UI controller classes.
  */
 
-export * from './FileIOController.js';
-export * from './PipelineExecutor.js';
+export * from './QsmInputSet.js';
+export * from './QsmPipelineController.js';
 export * from './PipelineSettingsController.js';
 export * from './MaskController.js';
-export * from './ViewerController.js';
+export * from './QsmEchoViewer.js';

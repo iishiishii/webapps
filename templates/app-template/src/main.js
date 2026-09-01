@@ -1,16 +1,23 @@
-// Scaffolded entry point. Imports the SHARED library by package name (resolved via
-// pnpm workspace) — NOT a relative ../../src path — so the copy is self-contained.
-import "@neurodesk/webapp-components/styles/base.css"; // shared base styles
-import { createNeuroWebapp } from "@neurodesk/webapp-components";
+import "@neurodesk/webapp-components/styles/imaging-workspace.css";
+import { mountImagingWorkspace } from "@neurodesk/webapp-components/core/mount-imaging-workspace";
+import { ConsoleOutput, ProgressManager } from "@neurodesk/webapp-components/ui";
 import { APP } from "./config.js";
 
-// createNeuroWebapp owns the shared UI: use the instance's progress/console rather
-// than constructing our own (the factory creates and returns them).
-const app = createNeuroWebapp({ root: document.getElementById("app") });
-app.progress.reset();
-app.console.log(`${APP.id} ready`);
+const workspace = mountImagingWorkspace({
+  controls: "#controls",
+  viewer: "#viewer",
+  status: "#status",
+  title: APP.id,
+  subtitle: "Browser-native Neurodesk webapp",
+});
+const progress = new ProgressManager({
+  barElement: document.getElementById("progressBar"),
+  textElement: document.getElementById("statusText"),
+});
+const output = new ConsoleOutput({ element: document.getElementById("consoleOutput") });
+progress.reset();
+output.log(`${APP.id} ready`);
 
-// App-specific scientific worker, metric renderers, and pipeline definitions live in
-// THIS app (see src/worker/, src/metrics/), not in the shared library. Wire them here.
+// Keep scientific worker messages, tensor policy, metrics, and pipeline definitions in the app.
 
-export default app;
+export default Object.freeze({ workspace, progress, console: output });

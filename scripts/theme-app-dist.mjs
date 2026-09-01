@@ -24,7 +24,9 @@ await applyAppTheme({
   themeFile: join(repoRoot, 'site', 'app-theme.css'),
   themeScriptFile: join(repoRoot, 'site', 'theme.js'),
   shellFile: join(repoRoot, 'site', 'app-shell.js'),
+  shellAdaptersDir: join(repoRoot, 'site', 'shell-adapters'),
   analyticsFile: join(repoRoot, 'packages', 'analytics', 'src', 'index.js'),
+  iconFile: join(repoRoot, 'site', 'neurodesk-logo.svg'),
 });
 
 console.log(`Applied the Neurodesk theme to the ${appId} standalone bundle`);

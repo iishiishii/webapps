@@ -4,7 +4,9 @@ import {
   FileIOController,
   categorizeNeuroFile,
   createFloat64Nifti,
+  createNiftiFromData,
   createNiftiHeaderFromVolume,
+  createNiftiFromVolume,
   isNiftiFile,
   parseNiftiHeader,
   readNiftiImageData
@@ -51,4 +53,54 @@ test('creates NIfTI output from NiiVue-style volume metadata', () => {
   assert.deepEqual(parsed.voxelSize.map(value => Number(value.toFixed(2))), [0.7, 0.8, 1.5]);
   const { data } = readNiftiImageData(output, Float64Array);
   assert.deepEqual(Array.from(data), [1.25, 2.5, 3.75, 5]);
+});
+
+test('preserves a NiiVue volume scalar datatype when creating NIfTI output', () => {
+  const cases = [
+    [Int8Array, 256, 8],
+    [Uint8Array, 2, 8],
+    [Int16Array, 4, 16],
+    [Uint16Array, 512, 16],
+    [Int32Array, 8, 32],
+    [Uint32Array, 768, 32],
+    [Float32Array, 16, 32],
+    [Float64Array, 64, 64],
+  ];
+
+  for (const [TypedArray, datatype, bitpix] of cases) {
+    const values = new TypedArray([1, 2, 3, 4]);
+    const output = createNiftiFromVolume({ dims: [2, 2, 1], img: values });
+    const parsed = parseNiftiHeader(output);
+    assert.equal(parsed.datatype, datatype, TypedArray.name);
+    assert.equal(parsed.bitpix, bitpix, TypedArray.name);
+    assert.deepEqual(Array.from(readNiftiImageData(output, Float64Array).data), [1, 2, 3, 4], TypedArray.name);
+  }
+});
+
+test('preserves NIfTI intensity scaling when exporting an existing volume', () => {
+  const output = createNiftiFromVolume({
+    hdr: {
+      dims: [3, 1, 1, 1, 1, 1, 1, 1],
+      scl_slope: 2,
+      scl_inter: 10,
+    },
+    img: new Uint8Array([3]),
+  });
+
+  const parsed = parseNiftiHeader(output);
+  assert.equal(parsed.sclSlope, 2);
+  assert.equal(parsed.sclInter, 10);
+  assert.deepEqual(Array.from(readNiftiImageData(output, Float64Array).data), [16]);
+});
+
+test('resets source scaling when writing newly derived voxel data', () => {
+  const sourceHeader = createNiftiHeaderFromVolume({
+    hdr: { dims: [3, 1, 1, 1], scl_slope: 2, scl_inter: 10 },
+  });
+  const output = createNiftiFromData(new Uint8Array([3]), sourceHeader);
+  const parsed = parseNiftiHeader(output);
+
+  assert.equal(parsed.sclSlope, 1);
+  assert.equal(parsed.sclInter, 0);
+  assert.deepEqual(Array.from(readNiftiImageData(output, Float64Array).data), [3]);
 });

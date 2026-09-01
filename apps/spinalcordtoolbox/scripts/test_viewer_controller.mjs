@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
-import { ViewerController } from '../web/js/controllers/ViewerController.js';
+import { ViewerController } from '@neurodesk/webapp-components/viewer';
 
 function createFakeNiivue() {
   return {

@@ -41,6 +41,15 @@ export function isGzipped(data) {
   return bytes[0] === 0x1f && bytes[1] === 0x8b;
 }
 
+export function isValidNifti1(data) {
+  const buffer = toArrayBuffer(data);
+  if (buffer.byteLength < 347) return false;
+  const view = new DataView(buffer);
+  return view.getUint8(344) === 0x6e
+    && (view.getUint8(345) === 0x2b || view.getUint8(345) === 0x69)
+    && view.getUint8(346) === 0x31;
+}
+
 export async function decodeNiftiBuffer(bufferLike) {
   const buffer = toArrayBuffer(bufferLike);
   if (!isGzipped(buffer)) return buffer;
@@ -73,6 +82,29 @@ export function readNiftiImageData(bufferLike, OutputCtor = Float32Array) {
   return { data: output, header, dims: [header.nx, header.ny, header.nz] };
 }
 
+export function parseNiftiVolume(bufferLike, options = {}) {
+  let buffer = toArrayBuffer(bufferLike);
+  if (isGzipped(buffer)) {
+    if (typeof options.decompress !== 'function') throw new Error('Compressed NIfTI requires a decompress function');
+    buffer = toArrayBuffer(options.decompress(buffer));
+  }
+  const header = parseNiftiHeader(buffer);
+  const dimCount = header.dims[0];
+  const timepoints = header.dims[4] || 1;
+  if (dimCount > 4 || (dimCount === 4 && timepoints !== 1)) {
+    throw new Error(`Unsupported NIfTI shape ${header.dims.slice(1, dimCount + 1).join('x')}; only 3D or singleton 4D volumes are supported.`);
+  }
+  const { data } = readNiftiImageData(buffer, options.OutputCtor || Float32Array);
+  return {
+    imageData: data,
+    dims: [header.nx, header.ny, header.nz],
+    voxelSize: header.voxelSize.map(value => Math.abs(value) || 1),
+    headerBytes: extractNiftiHeader(buffer),
+    affine: header.affine,
+    header,
+  };
+}
+
 export function extractNiftiHeader(bufferLike) {
   const buffer = toArrayBuffer(bufferLike);
   const view = new DataView(buffer);
@@ -97,6 +129,40 @@ export function createMaskNifti(maskData, sourceHeader, dims = null) {
   return createUint8Nifti(uint8, sourceHeader, dims);
 }
 
+export function createNiftiFromData(data, sourceHeader, options = {}) {
+  const format = NIFTI_FORMAT_BY_ARRAY.get(data?.constructor);
+  if (!format) throw new Error(`Unsupported volume datatype: ${data?.constructor?.name || typeof data}`);
+  const output = createTypedNifti(data, sourceHeader, {
+    ...format,
+    dims: options.dims || null,
+    preserveScaling: options.preserveScaling === true,
+  });
+  const view = new DataView(output);
+  if (options.spacing) {
+    view.setFloat32(80, options.spacing[0], true);
+    view.setFloat32(84, options.spacing[1], true);
+    view.setFloat32(88, options.spacing[2], true);
+  }
+  let min = options.calMin;
+  let max = options.calMax;
+  if (options.range === 'auto') {
+    min = Infinity;
+    max = -Infinity;
+    for (const value of data) {
+      if (!Number.isFinite(value)) continue;
+      if (value < min) min = value;
+      if (value > max) max = value;
+    }
+  } else if (!Number.isFinite(max)) {
+    max = -Infinity;
+    for (const value of data) if (Number.isFinite(value) && value > max) max = value;
+  }
+  const safeMax = Number.isFinite(max) ? max : 1;
+  view.setFloat32(124, options.clampCalMax === false ? safeMax : Math.max(1, safeMax), true);
+  view.setFloat32(128, Number.isFinite(min) ? min : 0, true);
+  return output;
+}
+
 export function createNiftiHeaderFromVolume(volume) {
   const headerSize = 352;
   const buffer = new ArrayBuffer(headerSize);
@@ -111,8 +177,8 @@ export function createNiftiHeaderFromVolume(volume) {
   view.setInt16(72, 32, true);
   for (let i = 0; i < 8; i++) view.setFloat32(76 + i * 4, pixDims[i] || 1, true);
   view.setFloat32(108, headerSize, true);
-  view.setFloat32(112, hdr.scl_slope || 1, true);
-  view.setFloat32(116, hdr.scl_inter || 0, true);
+  view.setFloat32(112, hdr.scl_slope ?? hdr.sclSlope ?? 1, true);
+  view.setFloat32(116, hdr.scl_inter ?? hdr.sclInter ?? 0, true);
   view.setUint8(123, 10);
   view.setInt16(252, hdr.qform_code || 1, true);
   view.setInt16(254, hdr.sform_code || 1, true);
@@ -133,8 +199,19 @@ export function createNiftiHeaderFromVolume(volume) {
 export function createNiftiFromVolume(volume) {
   const header = createNiftiHeaderFromVolume(volume);
   const data = volume?.img || volume?.image || new Float32Array(0);
-  return createFloat32Nifti(data instanceof Float32Array ? data : new Float32Array(data), header);
+  return createNiftiFromData(data, header, { preserveScaling: true });
 }
+
+const NIFTI_FORMAT_BY_ARRAY = new Map([
+  [Int8Array, { datatype: 256, bitpix: 8, bytesPerVoxel: 1 }],
+  [Uint8Array, { datatype: 2, bitpix: 8, bytesPerVoxel: 1 }],
+  [Int16Array, { datatype: 4, bitpix: 16, bytesPerVoxel: 2 }],
+  [Uint16Array, { datatype: 512, bitpix: 16, bytesPerVoxel: 2 }],
+  [Int32Array, { datatype: 8, bitpix: 32, bytesPerVoxel: 4 }],
+  [Uint32Array, { datatype: 768, bitpix: 32, bytesPerVoxel: 4 }],
+  [Float32Array, { datatype: 16, bitpix: 32, bytesPerVoxel: 4 }],
+  [Float64Array, { datatype: 64, bitpix: 64, bytesPerVoxel: 8 }],
+]);
 
 function createTypedNifti(data, sourceHeader, options) {
   const header = toArrayBuffer(sourceHeader);
@@ -150,18 +227,17 @@ function createTypedNifti(data, sourceHeader, options) {
   view.setInt16(40, 3, true);
   view.setInt16(48, 1, true);
   view.setFloat32(108, headerSize, true);
-  view.setFloat32(112, 1, true);
-  view.setFloat32(116, 0, true);
+  if (!options.preserveScaling) {
+    view.setFloat32(112, 1, true);
+    view.setFloat32(116, 0, true);
+  }
   if (options.dims) {
     view.setInt16(42, options.dims[0], true);
     view.setInt16(44, options.dims[1], true);
     view.setInt16(46, options.dims[2], true);
   }
 
-  if (options.datatype === 2) new Uint8Array(buffer, headerSize).set(data);
-  else if (options.datatype === 16) writeFloat32Data(view, headerSize, data);
-  else if (options.datatype === 64) writeFloat64Data(view, headerSize, data);
-  else throw new Error(`Unsupported output datatype: ${options.datatype}`);
+  writeTypedData(view, headerSize, data, options.datatype);
   return buffer;
 }
 
@@ -194,6 +270,20 @@ function writeFloat32Data(view, offset, data) {
 
 function writeFloat64Data(view, offset, data) {
   for (let i = 0; i < data.length; i++) view.setFloat64(offset + i * 8, data[i], true);
+}
+
+function writeTypedData(view, offset, data, datatype) {
+  switch (datatype) {
+    case 2: new Uint8Array(view.buffer, offset).set(data); break;
+    case 4: for (let i = 0; i < data.length; i++) view.setInt16(offset + i * 2, data[i], true); break;
+    case 8: for (let i = 0; i < data.length; i++) view.setInt32(offset + i * 4, data[i], true); break;
+    case 16: writeFloat32Data(view, offset, data); break;
+    case 64: writeFloat64Data(view, offset, data); break;
+    case 256: new Int8Array(view.buffer, offset).set(data); break;
+    case 512: for (let i = 0; i < data.length; i++) view.setUint16(offset + i * 2, data[i], true); break;
+    case 768: for (let i = 0; i < data.length; i++) view.setUint32(offset + i * 4, data[i], true); break;
+    default: throw new Error(`Unsupported output datatype: ${datatype}`);
+  }
 }
 
 function readVoxel(view, dataStart, index, datatype) {

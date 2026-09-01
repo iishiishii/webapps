@@ -14,6 +14,7 @@ apps/*/web/wasm/
 
 # Vendored shared components (generated from packages/components by each app's vendor script)
 apps/*/web/vendor/
+apps/qsmbly/vendor/
 apps/qsmbly/data/example/
 apps/qsmbly/rust-wasm/pkg/
 apps/qsmbly/wasm/qsm_wasm*
@@ -28,9 +29,18 @@ Thumbs.db
 
 # Temporary model weights
 .tmp_weights/
+apps/musclemap/.tmp_model_env/
+apps/musclemap/.tmp_model_release/
+apps/musclemap/web/models/
 
 # Python
 __pycache__/
 *.pyc
 *.egg-info/
 apps/*/web/coi-serviceworker.js
+
+# Runtime wrappers generated from packages/runtime-support
+apps/*/web/dcm2niix/
+apps/*/web/nifti-js/
+apps/qsmbly/dcm2niix/
+apps/qsmbly/nifti-js/

@@ -31,8 +31,4 @@ export class PipelineRegistry {
     if (!pipeline) throw new Error(`Pipeline not found: ${id}`);
     return pipeline;
   }
-
-  registerPlugin(plugin) {
-    for (const pipeline of plugin?.pipelines || []) this.register(pipeline);
-  }
 }

@@ -20,7 +20,13 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const { runWorkerCase, FIXTURE_CASES } = require('./test_inference_worker_e2e.cjs');
+const {
+  runWorkerCase,
+  FIXTURE_CASES,
+  prepareModuleWorkerSource,
+  loadSharedWorkerBindings,
+  installModuleLoader
+} = require('./test_inference_worker_e2e.cjs');
 const loadClassicScript = require('./load-classic-script.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -87,7 +93,8 @@ async function runErrorCase() {
   const ort = require('onnxruntime-node');
   const nifti = loadClassicScript(path.resolve(ROOT, 'web/nifti-js/index.js'));
   const WORKER_PATH = path.join(ROOT, 'web/js/inference-worker.js');
-  const workerSource = fs.readFileSync(WORKER_PATH, 'utf8');
+  const workerSource = prepareModuleWorkerSource(fs.readFileSync(WORKER_PATH, 'utf8'));
+  const sharedBindings = await loadSharedWorkerBindings();
 
   const messages = [];
   let resolveDone, rejectDone;
@@ -139,8 +146,10 @@ async function runErrorCase() {
     navigator: { hardwareConcurrency: 1 },
     location: { href: 'http://localhost/' }
   };
+  Object.assign(sandbox, sharedBindings);
   vm.createContext(sandbox);
   sandbox.globalThis = sandbox;
+  installModuleLoader(sandbox, selfObj, sandbox.localforage);
   vm.runInContext(workerSource, sandbox, { filename: 'inference-worker.js' });
   assert.equal(typeof selfObj.onmessage, 'function', 'worker registered onmessage');
 

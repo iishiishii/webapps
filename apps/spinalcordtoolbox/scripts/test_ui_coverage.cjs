@@ -7,20 +7,25 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
 const SHARED_UI = path.resolve(ROOT, '../../packages/components/src/ui');
+const SHARED_STYLES = path.resolve(ROOT, '../../packages/components/src/styles');
 const indexHtml = fs.readFileSync(path.join(ROOT, 'web/index.html'), 'utf8');
 const stylesCss = fs.readFileSync(path.join(ROOT, 'web/css/styles.css'), 'utf8');
+const effectiveStyles = [
+  fs.readFileSync(path.join(SHARED_STYLES, 'base.css'), 'utf8'),
+  fs.readFileSync(path.join(SHARED_STYLES, 'inference-workspace.css'), 'utf8'),
+  stylesCss
+].join('\n');
 const appJs = fs.readFileSync(path.join(ROOT, 'web/js/spinalcordtoolbox-app.js'), 'utf8');
 const controllerSources = [
-  'web/js/controllers/FileIOController.js',
-  'web/js/controllers/InferenceExecutor.js',
-  'web/js/controllers/ViewerController.js',
-  'web/js/controllers/DicomController.js',
+  'web/js/controllers/SctInputSessions.js',
+  'web/js/controllers/SctPipeline.js',
   'web/js/modules/fallback-nifti-preview.js'
 ].map(file => fs.readFileSync(path.join(ROOT, file), 'utf8')).join('\n');
 const sharedUiSources = [
   'ConsoleOutput.js',
   'ModalManager.js',
-  'ProgressManager.js'
+  'ProgressManager.js',
+  'WindowControls.js'
 ].map(file => fs.readFileSync(path.join(SHARED_UI, file), 'utf8')).join('\n');
 const viewerTest = fs.readFileSync(path.join(ROOT, 'scripts/test_viewer_controller.mjs'), 'utf8');
 const processingTest = fs.readFileSync(path.join(ROOT, 'scripts/test_sct_processing.cjs'), 'utf8');
@@ -118,7 +123,7 @@ assert.ok(/VIEWER_UNAVAILABLE_GUIDANCE[\s\S]*WebGL2[\s\S]*hardware acceleration/
 assert.ok(indexHtml.includes('<script src="nifti-js/index.js"></script>'), 'NIfTI parser is loaded for the non-WebGL fallback preview');
 assert.ok(appJs.includes('FallbackNiftiPreview'), 'app wires the non-WebGL NIfTI preview fallback');
 assert.ok(appJs.includes('this.renderFallbackPreview()'), 'viewer render path falls back to a 2D NIfTI preview');
-assert.ok(stylesCss.includes('.viewer-unavailable-message[hidden] { display: none !important; }'), 'hidden viewer fallback message does not paint over a working canvas');
+assert.match(effectiveStyles, /\.viewer-unavailable-message\[hidden\]\s*{\s*display:\s*none\s*!important;\s*}/, 'hidden viewer fallback message does not paint over a working canvas');
 assert.ok(appJs.includes('setViewerControlsEnabled(false)'), 'app disables viewer-only controls when the viewer is unavailable');
 assert.ok(appJs.includes('if (!this.isViewerAvailable()) return false;'), 'viewer render path is a no-op when WebGL2 is unavailable');
 assert.ok(indexHtml.includes('<section class="start-page" id="startPage"'), 'start page overlay exists');
@@ -127,6 +132,10 @@ assert.ok(appJs.includes("document.getElementById('fileInput')?.focus()"), 'star
 assert.ok(appJs.includes("bindModalButton('startPrivacyButton', this.privacyModal)"), 'start page Privacy header button is wired');
 assert.ok(appJs.includes("bindModalButton('startPrivacyInlineButton', this.privacyModal)"), 'start page Privacy body button is wired');
 assert.ok(appJs.includes("bindModalButton('startCitationsButton', this.citationsModal)"), 'start page Citations button is wired');
+assert.ok(
+  indexHtml.includes(`onclick="document.getElementById('aboutButton').click()"`),
+  'start page About button opens the shared About modal'
+);
 assert.ok(indexHtml.includes('id="moreAppsLink"'), 'main app header More Apps link exists');
 assert.ok(indexHtml.includes('href="../"'), 'More Apps links return to the composite webapps start page');
 assert.ok(!indexHtml.includes('https://neurodesk.org/getting-started/hosted/webapps/'), 'More Apps links do not leave the composite site');

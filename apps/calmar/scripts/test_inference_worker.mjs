@@ -10,7 +10,7 @@
 //   - localforage dropped, Cache Storage used instead
 //   - 'run-synthstrip' op is dispatched, calls stepSynthStrip -> runSynthStrip
 //   - inference-pipeline.js is a real ES module
-//   - InferenceExecutor spawns the worker with { type: 'module' }
+//   - CalmarPipeline configures PipelineExecutor with { type: 'module' }
 //
 // End-to-end validation happens in the 2a.1.4c onnxruntime-node parity test
 // and the 2a.1.5 browser smoke test.
@@ -24,7 +24,7 @@ import { parse } from 'acorn';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WORKER_PATH = path.join(ROOT, 'web/js/inference-worker.js');
 const PIPELINE_PATH = path.join(ROOT, 'web/js/inference-pipeline.js');
-const EXECUTOR_PATH = path.join(ROOT, 'web/js/controllers/InferenceExecutor.js');
+const EXECUTOR_PATH = path.join(ROOT, 'web/js/controllers/CalmarPipeline.js');
 
 for (const p of [WORKER_PATH, PIPELINE_PATH, EXECUTOR_PATH]) {
   assert.ok(fs.existsSync(p), `${path.relative(ROOT, p)} must exist`);
@@ -168,20 +168,20 @@ assert.doesNotMatch(
   'no UMD IIFE wrapper (use ESM)'
 );
 
-// ---- (6) InferenceExecutor spawns module worker ----
+// ---- (6) CalmarPipeline configures a module worker ----
 assert.match(
   executor,
-  /new\s+Worker\s*\([^)]*type:\s*['"]module['"]/,
-  "InferenceExecutor must spawn the worker with { type: 'module' }"
+  /workerType:\s*['"]module['"]/,
+  "CalmarPipeline must configure the shared executor as a module worker"
 );
 
-// Phase 2a.1.4b: InferenceExecutor must expose runSynthStrip() that posts
+// CalmarPipeline must expose runSynthStrip() that posts
 // the 'run-synthstrip' worker op, and must NOT carry the dead
 // runVertebralLabeling method (the worker no longer handles that op).
 assert.match(
   executor,
   /\brunSynthStrip\s*\(/,
-  "InferenceExecutor must define runSynthStrip(...)"
+  "CalmarPipeline must define runSynthStrip(...)"
 );
 assert.match(
   executor,
@@ -316,7 +316,7 @@ assert.match(
 assert.match(
   executor,
   /\brunInverseWarpMask\s*\(/,
-  'InferenceExecutor must expose runInverseWarpMask(...)'
+  'CalmarPipeline must expose runInverseWarpMask(...)'
 );
 assert.match(
   executor,

@@ -4,18 +4,20 @@
  * Main application class. Orchestrates controllers, viewer, and inference.
  */
 
-import { FileIOController } from './controllers/FileIOController.js';
-import { DicomController } from './controllers/DicomController.js?v=1.2.35';
-import { ViewerController } from './controllers/ViewerController.js?v=1.2.35';
-import { InferenceExecutor } from './controllers/InferenceExecutor.js';
-import { ConsoleOutput } from '@neurodesk/webapp-components/ui';
+import './label-codec.js';
+import { MuscleMapInputSet } from './controllers/MuscleMapInputSet.js';
+import { MuscleMapDicomInput } from './controllers/MuscleMapDicomInput.js';
+import { MuscleMapViewer } from './controllers/MuscleMapViewer.js';
+import { MuscleMapPipeline } from './controllers/MuscleMapPipeline.js';
+import { ConsoleOutput, bindWindowControls } from '@neurodesk/webapp-components/ui';
 import { ProgressManager } from '@neurodesk/webapp-components/ui';
 import { ModalManager } from '@neurodesk/webapp-components/ui';
+import { createNiftiFromVolume, downloadBlob } from '@neurodesk/webapp-components/file-io';
 import { MuscleLegend } from './modules/ui/MuscleLegend.js';
-import { MetricsSummary } from './modules/ui/MetricsSummary.js';
+import { MuscleMapMetricsPanel } from './modules/ui/MuscleMapMetricsPanel.js';
 import { FallbackNiftiPreview } from './modules/fallback-nifti-preview.js';
 import * as Config from './app/config.js';
-import { generateNiivueColormap, getLabelName, getLabelColor, getMuscleLabels, getLabelsForModel } from './app/labels.js';
+import { generateNiivueColormap, getLabelName, getLabelColor, getMuscleLabels, getLabelsForModel, getLabelsForLabelSpace } from './app/labels.js';
 
 class MuscleMapApp {
   static VIEWER_UNAVAILABLE_GUIDANCE =
@@ -53,13 +55,16 @@ class MuscleMapApp {
     });
     this.progress = new ProgressManager(Config.PROGRESS_CONFIG);
     this.muscleLegend = new MuscleLegend('muscleLegend');
-    this.metricsSummary = new MetricsSummary('metricsSummary');
+    this.metricsSummary = new MuscleMapMetricsPanel('metricsSummary');
 
     // State
     this.inputFile = null;
     this.currentResultTab = 'input';
     this.currentModelName = Config.MODELS[0].name;
+    this.currentLabelSpaceId = Config.MODELS[0].labelSpaceId;
     this.segmentationResults = [];
+    this.uploadedDisplayFiles = new Map();
+    this.uploadedNormalizedFiles = new Map();
     this.activeSegmentationId = null;
     this._pendingMetrics = null;
     this._metricsSourceId = null;
@@ -91,29 +96,62 @@ class MuscleMapApp {
     if (footerVersionEl) footerVersionEl.textContent = `v${Config.VERSION}`;
     const aboutVersionEl = document.getElementById('aboutAppVersion');
     if (aboutVersionEl) aboutVersionEl.textContent = `v${Config.VERSION}`;
+    const modelSelect = document.getElementById('modelSelect');
+    if (modelSelect) {
+      modelSelect.innerHTML = '';
+      for (const model of Config.MODELS) {
+        const suffix = model.legacy ? ' — legacy' : '';
+        modelSelect.appendChild(new Option(
+          `${model.label} (${model.numClasses - 1} structures, v${model.modelVersion}${suffix})`,
+          model.labelSpaceId
+        ));
+      }
+      modelSelect.value = Config.MODELS[0].labelSpaceId;
+      modelSelect.addEventListener('change', () => {
+        this.updateAboutModel();
+        this.syncInferenceCompatibilityControls();
+        const selectedModel = this.getSelectedModelConfig();
+        const overlapSelect = document.getElementById('overlapSelect');
+        if (overlapSelect) overlapSelect.value = String(selectedModel.preprocessing.overlapDefault);
+      });
+    }
+    this.updateAboutModel();
+    this.syncInferenceCompatibilityControls();
+    const overlapSelect = document.getElementById('overlapSelect');
+    if (overlapSelect) overlapSelect.value = String(Config.MODELS[0].preprocessing.overlapDefault);
 
     // Controllers
-    this.dicomController = new DicomController({
+    this.dicomController = new MuscleMapDicomInput({
       updateOutput: (msg) => this.updateOutput(msg),
       onConversionComplete: (files) => {
         this.fileIOController.setFiles(files);
       }
     });
 
-    this.fileIOController = new FileIOController({
+    this.fileIOController = new MuscleMapInputSet({
       updateOutput: (msg) => this.updateOutput(msg),
       onFileLoaded: (file) => this.onFileLoaded(file),
       onViewFile: (file) => this.onFileLoaded(file),
       onFilesChanged: () => this.onFilesChanged(),
-      onDicomFiles: (files) => this.dicomController.convertFiles(files)
+      onDicomFiles: (files) => this.dicomController.convertFiles(files),
+      getDefaultLabelSpaceId: () => this.getSelectedModelConfig().labelSpaceId,
+      labelSpaces: Config.MODEL_RELEASES.map(model => ({
+        id: model.labelSpaceId,
+        label: model.label,
+        modelVersion: model.modelVersion,
+        status: model.status,
+        supportsOpenRecon: globalThis.MuscleMapLabelCodec
+          .createLabelCodec(model.labelSpace)
+          .supportsEncoding('openrecon-int12')
+      }))
     });
 
-    this.viewerController = new ViewerController({
+    this.viewerController = new MuscleMapViewer({
       nv: this.nv,
       updateOutput: (msg) => this.updateOutput(msg)
     });
 
-    this.inferenceExecutor = new InferenceExecutor({
+    this.inferenceExecutor = new MuscleMapPipeline({
       updateOutput: (msg) => this.updateOutput(msg),
       setProgress: (val, text) => this.setProgress(val, text),
       onStageData: (data) => this.handleStageData(data),
@@ -260,7 +298,8 @@ class MuscleMapApp {
     const labelIndex = Math.round(rawValue);
     if (labelIndex <= 0) return '';
 
-    const modelLabels = getLabelsForModel(this.currentModelName);
+    const modelLabels = getLabelsForLabelSpace(this.currentLabelSpaceId) ||
+      getLabelsForModel(this.currentModelName);
     const labelName = getLabelName(labelIndex, modelLabels);
     const labelValue = modelLabels[labelIndex]?.value ?? labelIndex;
     return `#${labelValue} ${labelName}`;
@@ -451,7 +490,7 @@ class MuscleMapApp {
       zone.classList.remove('dragover');
 
       const files = Array.from(e.dataTransfer.files);
-      const hasNifti = files.some(f => FileIOController.isNiftiFile(f));
+      const hasNifti = files.some(f => MuscleMapInputSet.isNiftiFile(f));
 
       if (hasNifti) {
         this.fileIOController.handleDroppedFiles(files);
@@ -490,109 +529,25 @@ class MuscleMapApp {
   // ==================== Viewer Controls ====================
 
   setupWindowControls() {
-    const rangeMin = document.getElementById('rangeMin');
-    const rangeMax = document.getElementById('rangeMax');
-    const windowMin = document.getElementById('windowMin');
-    const windowMax = document.getElementById('windowMax');
-    const resetBtn = document.getElementById('resetWindow');
-    if (!rangeMin || !rangeMax || !windowMin || !windowMax) return;
-
-    const updateSelected = () => {
-      const selected = document.getElementById('rangeSelected');
-      if (!selected) return;
-      const min = parseFloat(rangeMin.value);
-      const max = parseFloat(rangeMax.value);
-      selected.style.left = `${min}%`;
-      selected.style.width = `${max - min}%`;
-    };
-
-    const applyFromSliders = () => {
-      if (!this.isViewerAvailable() || !this.nv.volumes.length) return;
-      const vol = this.nv.volumes[0];
-      const dataMin = vol.global_min ?? 0;
-      const dataMax = vol.global_max ?? 1;
-      const range = dataMax - dataMin || 1;
-      const newMin = dataMin + (parseFloat(rangeMin.value) / 100) * range;
-      const newMax = dataMin + (parseFloat(rangeMax.value) / 100) * range;
-      windowMin.value = newMin.toPrecision(4);
-      windowMax.value = newMax.toPrecision(4);
-      vol.cal_min = newMin;
-      vol.cal_max = newMax;
-      this.nv.updateGLVolume();
-      updateSelected();
-    };
-
-    const applyFromInputs = () => {
-      if (!this.isViewerAvailable() || !this.nv.volumes.length) return;
-      const vol = this.nv.volumes[0];
-      const newMin = parseFloat(windowMin.value);
-      const newMax = parseFloat(windowMax.value);
-      if (isNaN(newMin) || isNaN(newMax)) return;
-      vol.cal_min = newMin;
-      vol.cal_max = newMax;
-      this.nv.updateGLVolume();
-      this.syncSlidersToVolume();
-    };
-
-    rangeMin.addEventListener('input', () => {
-      if (parseFloat(rangeMin.value) > parseFloat(rangeMax.value) - 1) {
-        rangeMin.value = parseFloat(rangeMax.value) - 1;
+    this.windowControls = bindWindowControls({
+      getVolume: () => this.nv?.volumes?.[0] || null,
+      updateVolume: () => this.nv?.updateGLVolume?.(),
+      onReset: volume => {
+        if (typeof this.applyAutoContrast === 'function') return this.applyAutoContrast();
+        volume.cal_min = volume.global_min ?? 0;
+        volume.cal_max = volume.global_max ?? 1;
+        this.nv?.updateGLVolume?.();
+        this.windowControls.sync();
       }
-      applyFromSliders();
     });
-
-    rangeMax.addEventListener('input', () => {
-      if (parseFloat(rangeMax.value) < parseFloat(rangeMin.value) + 1) {
-        rangeMax.value = parseFloat(rangeMin.value) + 1;
-      }
-      applyFromSliders();
-    });
-
-    windowMin.addEventListener('change', applyFromInputs);
-    windowMax.addEventListener('change', applyFromInputs);
-
-    if (resetBtn) {
-      resetBtn.addEventListener('click', () => {
-        if (!this.isViewerAvailable() || !this.nv.volumes.length) return;
-        const vol = this.nv.volumes[0];
-        vol.cal_min = vol.global_min ?? 0;
-        vol.cal_max = vol.global_max ?? 1;
-        this.nv.updateGLVolume();
-        this.syncWindowControls();
-      });
-    }
   }
 
   syncWindowControls() {
-    if (!this.isViewerAvailable() || !this.nv.volumes.length) return;
-    const vol = this.nv.volumes[0];
-    const windowMin = document.getElementById('windowMin');
-    const windowMax = document.getElementById('windowMax');
-    if (windowMin) windowMin.value = (vol.cal_min ?? 0).toPrecision(4);
-    if (windowMax) windowMax.value = (vol.cal_max ?? 1).toPrecision(4);
-    this.syncSlidersToVolume();
-    const dlBtn = document.getElementById('downloadCurrentVolume');
-    if (dlBtn) dlBtn.disabled = false;
+    this.windowControls?.sync();
   }
 
   syncSlidersToVolume() {
-    if (!this.isViewerAvailable() || !this.nv.volumes.length) return;
-    const vol = this.nv.volumes[0];
-    const dataMin = vol.global_min ?? 0;
-    const dataMax = vol.global_max ?? 1;
-    const range = dataMax - dataMin || 1;
-    const rangeMin = document.getElementById('rangeMin');
-    const rangeMax = document.getElementById('rangeMax');
-    const selected = document.getElementById('rangeSelected');
-    if (!rangeMin || !rangeMax) return;
-    const pctMin = Math.max(0, Math.min(100, ((vol.cal_min - dataMin) / range) * 100));
-    const pctMax = Math.max(0, Math.min(100, ((vol.cal_max - dataMin) / range) * 100));
-    rangeMin.value = pctMin;
-    rangeMax.value = pctMax;
-    if (selected) {
-      selected.style.left = `${pctMin}%`;
-      selected.style.width = `${pctMax - pctMin}%`;
-    }
+    this.windowControls?.syncSliders();
   }
 
   downloadCurrentVolume() {
@@ -641,7 +596,7 @@ class MuscleMapApp {
 
   createNiftiDownloadFromVolume(vol, label = 'volume') {
     const name = (vol.name || 'volume').replace(/\.(nii|nii\.gz)$/i, '');
-    const niftiBuffer = this.createNiftiFromVolume(vol);
+    const niftiBuffer = createNiftiFromVolume(vol);
     return {
       file: new File([niftiBuffer], `${name}.nii`, { type: 'application/octet-stream' }),
       name: `${name}.nii`,
@@ -651,55 +606,7 @@ class MuscleMapApp {
 
   downloadFile(file, name = file?.name || 'download.nii') {
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  createNiftiFromVolume(vol) {
-    const hdr = vol.hdr;
-    const img = vol.img;
-    let datatype = 16, bitpix = 32, bytesPerVoxel = 4;
-    if (img instanceof Float64Array) { datatype = 64; bitpix = 64; bytesPerVoxel = 8; }
-    else if (img instanceof Int16Array) { datatype = 4; bitpix = 16; bytesPerVoxel = 2; }
-    else if (img instanceof Uint8Array) { datatype = 2; bitpix = 8; bytesPerVoxel = 1; }
-
-    const headerSize = 352;
-    const buffer = new ArrayBuffer(headerSize + img.length * bytesPerVoxel);
-    const view = new DataView(buffer);
-
-    view.setInt32(0, 348, true);
-    const dims = hdr.dims || [3, vol.dims[1], vol.dims[2], vol.dims[3], 1, 1, 1, 1];
-    for (let i = 0; i < 8; i++) view.setInt16(40 + i * 2, dims[i] || 0, true);
-    view.setInt16(70, datatype, true);
-    view.setInt16(72, bitpix, true);
-    const pixdim = hdr.pixDims || [1, 1, 1, 1, 1, 1, 1, 1];
-    for (let i = 0; i < 8; i++) view.setFloat32(76 + i * 4, pixdim[i] || 1, true);
-    view.setFloat32(108, headerSize, true);
-    view.setFloat32(112, hdr.scl_slope || 1, true);
-    view.setFloat32(116, hdr.scl_inter || 0, true);
-    view.setUint8(123, 10);
-    view.setInt16(252, hdr.qform_code || 1, true);
-    view.setInt16(254, hdr.sform_code || 1, true);
-    if (hdr.affine) {
-      for (let i = 0; i < 4; i++) {
-        view.setFloat32(280 + i * 4, hdr.affine[0][i] || 0, true);
-        view.setFloat32(296 + i * 4, hdr.affine[1][i] || 0, true);
-        view.setFloat32(312 + i * 4, hdr.affine[2][i] || 0, true);
-      }
-    }
-    view.setUint8(344, 0x6E);
-    view.setUint8(345, 0x2B);
-    view.setUint8(346, 0x31);
-    view.setUint8(347, 0x00);
-
-    new Uint8Array(buffer, headerSize).set(new Uint8Array(img.buffer, img.byteOffset, img.byteLength));
-    return buffer;
+    downloadBlob(file, name);
   }
 
   saveScreenshot() {
@@ -762,6 +669,8 @@ class MuscleMapApp {
     this.syncImfControls();
     this.syncPostprocessingControls();
     const entries = this.fileIOController.getEntries();
+    this.uploadedDisplayFiles.clear();
+    this.uploadedNormalizedFiles.clear();
     const currentEntry = entries.find(entry => entry.file === this.inputFile) || null;
     const currentIsDisplayable = currentEntry && currentEntry.role !== 'segmentation';
     const primary = this.fileIOController.getPrimaryImageEntry();
@@ -773,7 +682,7 @@ class MuscleMapApp {
     }
 
     const runBtn = document.getElementById('runSegmentation');
-    if (runBtn) runBtn.disabled = !this.fileIOController.hasValidData();
+    if (runBtn) runBtn.disabled = this.fileIOController.getSegmentEntries().length === 0;
   }
 
   async renderFallbackPreview(file, { stageName = 'Image' } = {}) {
@@ -790,10 +699,31 @@ class MuscleMapApp {
 
   // ==================== Inference ====================
 
+  updateAboutModel() {
+    const model = this.getSelectedModelConfig();
+    const version = document.getElementById('aboutModelVersion');
+    const structures = document.getElementById('aboutStructureCount');
+    const citation = document.getElementById('aboutModelCitation');
+    if (version) version.textContent = `v${model.modelVersion}`;
+    if (structures) structures.textContent = String(model.numClasses - 1);
+    if (citation) {
+      citation.href = `https://doi.org/${model.source.doi}`;
+      citation.textContent = model.source.doi;
+    }
+  }
+
+  syncInferenceCompatibilityControls() {
+    const model = this.getSelectedModelConfig();
+    const usesUpstreamPipeline = model.id === 'wholebody' && Number.parseFloat(model.modelVersion) >= 1.4;
+    document.getElementById('sourceChunkGroup')?.classList.toggle('hidden', !usesUpstreamPipeline);
+    document.getElementById('sliceThicknessGroup')?.classList.toggle('hidden', usesUpstreamPipeline);
+    document.getElementById('lowResGroup')?.classList.toggle('hidden', usesUpstreamPipeline);
+  }
+
   getSelectedModelConfig() {
     const modelSelect = document.getElementById('modelSelect');
-    const selectedModelName = modelSelect ? modelSelect.value : Config.MODELS[0].name;
-    return Config.MODELS.find(m => m.name === selectedModelName) || Config.MODELS[0];
+    const selectedLabelSpaceId = modelSelect ? modelSelect.value : Config.MODELS[0].labelSpaceId;
+    return Config.MODELS.find(model => model.labelSpaceId === selectedLabelSpaceId) || Config.MODELS[0];
   }
 
   setWorkerButtonsBusy(busy) {
@@ -805,7 +735,7 @@ class MuscleMapApp {
       .filter(source => source.type !== 'consolidated')
       .length;
 
-    if (runBtn) runBtn.disabled = busy || !this.fileIOController.hasValidData();
+    if (runBtn) runBtn.disabled = busy || this.fileIOController.getSegmentEntries().length === 0;
     if (consolidateBtn) consolidateBtn.disabled = busy || consolidationSourceCount <= 1;
     if (calculateMetricsBtn) calculateMetricsBtn.disabled = busy || !this.getSelectedMetricsSegmentationSource();
     if (cancelBtn) cancelBtn.disabled = !busy;
@@ -826,28 +756,30 @@ class MuscleMapApp {
 
     const modelConfig = this.getSelectedModelConfig();
 
-    // Get overlap setting
     const overlapSelect = document.getElementById('overlapSelect');
     const overlap = overlapSelect ? parseFloat(overlapSelect.value) : Config.INFERENCE_DEFAULTS.overlap;
 
-    // Get chunk size setting
     const chunkSizeSelect = document.getElementById('chunkSizeSelect');
     const chunkSizeRaw = chunkSizeSelect ? chunkSizeSelect.value : Config.INFERENCE_DEFAULTS.chunkSize;
     const chunkSize = chunkSizeRaw === 'auto' ? 'auto' : parseInt(chunkSizeRaw, 10);
 
-    // Get WebGPU toggle state
+    const sourceChunkSizeSelect = document.getElementById('sourceChunkSizeSelect');
+    const sourceChunkSizeRaw = sourceChunkSizeSelect
+      ? sourceChunkSizeSelect.value
+      : String(Config.INFERENCE_DEFAULTS.sourceChunkSize);
+    const sourceChunkSize = sourceChunkSizeRaw === 'full'
+      ? 'full'
+      : parseInt(sourceChunkSizeRaw, 10);
+
     const webgpuToggle = document.getElementById('webgpuToggle');
     const useWebGPU = webgpuToggle ? webgpuToggle.checked : true;
 
-    // Get slice thickness
     const sliceThicknessInput = document.getElementById('sliceThickness');
     const sliceThickness = sliceThicknessInput ? parseFloat(sliceThicknessInput.value) : -1;
 
-    // Get low-resolution postprocessing toggle state
     const lowResToggle = document.getElementById('lowResToggle');
     const lowRes = lowResToggle ? lowResToggle.checked : Config.INFERENCE_DEFAULTS.lowRes;
 
-    const modelBaseUrl = new URL(Config.MODEL_BASE_URL, window.location.href).href;
     const segmentEntries = this.fileIOController.getSegmentEntries();
     const uploadedSegmentations = this.fileIOController.getSegmentationEntries();
     if (segmentEntries.length === 0 && uploadedSegmentations.length === 0) {
@@ -864,7 +796,6 @@ class MuscleMapApp {
 
     this.setWorkerButtonsBusy(true);
 
-    // Clear previous
     this.inferenceExecutor.clearResults();
     this.segmentationResults = [];
     this.activeSegmentationId = null;
@@ -877,11 +808,11 @@ class MuscleMapApp {
     this._lastDetectedLabelIndices = [];
     this.syncPostprocessingControls();
 
-    // Store selected model for result display
     this.currentModelName = modelConfig.name;
+    this.currentLabelSpaceId = modelConfig.labelSpaceId;
 
-    // Re-register colormap with model-specific labels
-    const modelLabels = getLabelsForModel(modelConfig.name);
+    const modelLabels = getLabelsForLabelSpace(modelConfig.labelSpaceId) ||
+      getLabelsForModel(modelConfig.name);
     const colormapData = generateNiivueColormap(modelLabels);
     if (this.isViewerAvailable()) {
       this.viewerController.registerMuscleColormap(colormapData);
@@ -889,12 +820,10 @@ class MuscleMapApp {
 
     const generatedSegmentations = [];
     const baseSettings = {
-      modelName: modelConfig.name,
-      numClasses: modelConfig.numClasses,
-      roiSize: modelConfig.roiSize,
+      model: modelConfig,
       overlap,
       chunkSize,
-      modelBaseUrl,
+      sourceChunkSize,
       useWebGPU,
       sliceThickness,
       lowRes,
@@ -928,6 +857,10 @@ class MuscleMapApp {
           baseFile: entry.file,
           modelName: modelConfig.name,
           numClasses: modelConfig.numClasses,
+          labelSpaceId: fullResult.provenance?.labelSpaceId,
+          labelEncoding: fullResult.provenance?.encoding,
+          labelSpace: modelConfig.labelSpace,
+          provenance: fullResult.provenance,
           labelIndices: [...this._lastDetectedLabelIndices]
         };
         generatedSegmentations.push(segmentation);
@@ -1041,17 +974,24 @@ class MuscleMapApp {
   }
 
   getUploadedSegmentationSources() {
-    return this.fileIOController.getSegmentationEntries().map(entry => ({
-      id: `uploaded-${entry.id}`,
-      type: 'uploaded',
-      label: entry.file.name,
-      file: entry.file,
-      displayFile: null,
-      baseFile: this.fileIOController.getPrimaryImageEntry()?.file || this.inputFile,
-      modelName: this.currentModelName,
-      numClasses: this.getSelectedModelConfig().numClasses,
-      labelIndices: null
-    }));
+    return this.fileIOController.getSegmentationEntries().map(entry => {
+      const model = Config.MODEL_RELEASES.find(item => item.labelSpaceId === entry.labelSpaceId);
+      const sourceId = `uploaded-${entry.id}`;
+      return {
+        id: sourceId,
+        type: 'uploaded',
+        label: entry.file.name,
+        file: this.uploadedNormalizedFiles.get(sourceId) || entry.file,
+        displayFile: this.uploadedDisplayFiles.get(sourceId) || null,
+        baseFile: this.fileIOController.getPrimaryImageEntry()?.file || this.inputFile,
+        modelName: model?.name || null,
+        numClasses: model?.numClasses || null,
+        labelSpaceId: entry.labelSpaceId,
+        labelEncoding: entry.labelEncoding,
+        labelSpace: model?.labelSpace || null,
+        labelIndices: null
+      };
+    });
   }
 
   getAvailableSegmentationSources() {
@@ -1059,6 +999,23 @@ class MuscleMapApp {
       ...this.segmentationResults,
       ...this.getUploadedSegmentationSources()
     ];
+  }
+
+  requireSegmentationContract(source) {
+    if (!source?.labelSpaceId || !source?.labelEncoding || !source?.labelSpace) {
+      throw new Error(`Choose the label space and encoding for ${source?.label || 'the segmentation'}`);
+    }
+    return source;
+  }
+
+  async createSegmentationInput(source) {
+    this.requireSegmentationContract(source);
+    return {
+      data: await source.file.arrayBuffer(),
+      labelSpaceId: source.labelSpaceId,
+      encoding: source.labelEncoding,
+      labelSpace: source.labelSpace
+    };
   }
 
   getSegmentationSourceById(id) {
@@ -1123,8 +1080,20 @@ class MuscleMapApp {
       return;
     }
 
-    const sourceModel = sources.find(source => source.modelName)?.modelName;
-    const modelConfig = Config.MODELS.find(m => m.name === sourceModel) || this.getSelectedModelConfig();
+    try {
+      sources.forEach(source => this.requireSegmentationContract(source));
+    } catch (error) {
+      this.updateOutput(error.message);
+      return;
+    }
+    const labelSpaceIds = new Set(sources.map(source => source.labelSpaceId));
+    if (labelSpaceIds.size !== 1) {
+      this.updateOutput('Segmentation consolidation requires one shared label space.');
+      return;
+    }
+    const modelConfig = Config.MODEL_RELEASES.find(
+      model => model.labelSpaceId === sources[0].labelSpaceId
+    ) || this.getSelectedModelConfig();
     const numClasses = Math.max(
       modelConfig.numClasses,
       ...sources.map(source => source.numClasses || 0)
@@ -1139,25 +1108,31 @@ class MuscleMapApp {
 
     try {
       const payload = {
-        segmentationDataList: await Promise.all(sources.map(source => source.file.arrayBuffer())),
-        settings: {
-          numClasses
-        }
+        segmentationInputs: await Promise.all(sources.map(source => this.createSegmentationInput(source))),
+        settings: {}
       };
       await this.inferenceExecutor.consolidateSegmentations(payload);
       const result = this.inferenceExecutor.getResult('segmentation');
       if (!result?.file) throw new Error('No consolidated segmentation produced');
 
       const file = await this.cloneResultFile(result.file, 'consolidated_segmentation.nii');
+      const displayResult = this.inferenceExecutor.getResult('segmentation_display');
+      const displayFile = displayResult?.file
+        ? await this.cloneResultFile(displayResult.file, 'consolidated_segmentation_display.nii')
+        : null;
       const consolidated = {
         id: `consolidated-${Date.now()}`,
         type: 'consolidated',
         label: 'Consolidated segmentation',
         file,
-        displayFile: null,
+        displayFile,
         baseFile: sources.find(source => source.baseFile)?.baseFile || this.inputFile,
         modelName: modelConfig.name,
         numClasses,
+        labelSpaceId: result.provenance?.labelSpaceId,
+        labelEncoding: result.provenance?.encoding,
+        labelSpace: modelConfig.labelSpace,
+        provenance: result.provenance,
         labelIndices: [...this._lastDetectedLabelIndices]
       };
 
@@ -1188,6 +1163,12 @@ class MuscleMapApp {
       this.updateOutput('Choose a segmentation label map before calculating metrics.');
       return;
     }
+    try {
+      this.requireSegmentationContract(segmentationSource);
+    } catch (error) {
+      this.updateOutput(error.message);
+      return;
+    }
 
     const imfConfig = this.getImfMetricConfig();
     if (imfConfig.error) {
@@ -1195,8 +1176,11 @@ class MuscleMapApp {
       return;
     }
 
-    const modelConfig = Config.MODELS.find(m => m.name === segmentationSource.modelName) || this.getSelectedModelConfig();
+    const modelConfig = Config.MODEL_RELEASES.find(
+      model => model.labelSpaceId === segmentationSource.labelSpaceId
+    ) || this.getSelectedModelConfig();
     this.currentModelName = modelConfig.name;
+    this.currentLabelSpaceId = segmentationSource.labelSpaceId;
     this.setWorkerButtonsBusy(true);
     this.metricsSummary.hide();
     this._pendingMetrics = null;
@@ -1205,9 +1189,8 @@ class MuscleMapApp {
 
     try {
       const payload = {
-        segmentationDataList: [await segmentationSource.file.arrayBuffer()],
+        segmentationInputs: [await this.createSegmentationInput(segmentationSource)],
         settings: {
-          numClasses: segmentationSource.numClasses || modelConfig.numClasses,
           consolidateSegmentations: false,
           imfMetrics: imfConfig.workerSettings
         }
@@ -1222,6 +1205,26 @@ class MuscleMapApp {
       }
 
       await this.inferenceExecutor.calculateMetrics(payload);
+      const normalizedResult = this.inferenceExecutor.getResult('segmentation');
+      const displayResult = this.inferenceExecutor.getResult('segmentation_display');
+      if (normalizedResult?.file && segmentationSource.type === 'uploaded') {
+        const normalizedFile = await this.cloneResultFile(
+          normalizedResult.file,
+          `${segmentationSource.id}_official-labels.nii`
+        );
+        segmentationSource.file = normalizedFile;
+        this.uploadedNormalizedFiles.set(segmentationSource.id, normalizedFile);
+      }
+      if (displayResult?.file) {
+        const displayFile = await this.cloneResultFile(
+          displayResult.file,
+          `${segmentationSource.id}_display.nii`
+        );
+        segmentationSource.displayFile = displayFile;
+        if (segmentationSource.type === 'uploaded') {
+          this.uploadedDisplayFiles.set(segmentationSource.id, displayFile);
+        }
+      }
       this.updateOutput('Metrics ready.');
     } catch (error) {
       this.updateOutput(`Error: ${error.message}`);
@@ -1282,7 +1285,7 @@ class MuscleMapApp {
     this._activeWorkerTask = null;
     const runBtn = document.getElementById('runSegmentation');
     const cancelBtn = document.getElementById('cancelButton');
-    if (runBtn) runBtn.disabled = false;
+    if (runBtn) runBtn.disabled = this.fileIOController.getSegmentEntries().length === 0;
     if (cancelBtn) cancelBtn.disabled = true;
     this.syncPostprocessingControls();
   }
@@ -1402,9 +1405,18 @@ class MuscleMapApp {
   async showSegmentationSource(id) {
     const source = this.getSegmentationSourceById(id);
     if (!source) return;
+    if (source.type === 'uploaded' && !source.displayFile) {
+      this.updateOutput('Calculate metrics once to validate and decode this uploaded segmentation before previewing it.');
+      return;
+    }
 
     this.activeSegmentationId = source.id;
     this.currentModelName = source.modelName || this.currentModelName;
+    this.currentLabelSpaceId = source.labelSpaceId || this.currentLabelSpaceId;
+    const sourceLabels = getLabelsForLabelSpace(this.currentLabelSpaceId);
+    if (sourceLabels && this.isViewerAvailable()) {
+      this.viewerController.registerMuscleColormap(generateNiivueColormap(sourceLabels));
+    }
     const overlayFile = source.displayFile || source.file;
     const baseFile = source.baseFile || this.fileIOController.getPrimaryImageEntry()?.file || this.inputFile;
 
@@ -1503,7 +1515,8 @@ class MuscleMapApp {
   }
 
   showDetectedMuscles(labelIndices) {
-    const modelLabels = getLabelsForModel(this.currentModelName);
+    const modelLabels = getLabelsForLabelSpace(this.currentLabelSpaceId) ||
+      getLabelsForModel(this.currentModelName);
     const allLabels = getMuscleLabels(modelLabels);
     const detected = labelIndices.map(idx => {
       const label = allLabels.find(l => l.index === idx);
@@ -1545,7 +1558,7 @@ class MuscleMapApp {
     const runBtn = document.getElementById('runSegmentation');
     const cancelBtn = document.getElementById('cancelButton');
     const statusText = document.getElementById('statusText');
-    if (runBtn) runBtn.disabled = false;
+    if (runBtn) runBtn.disabled = this.fileIOController.getSegmentEntries().length === 0;
     if (cancelBtn) cancelBtn.disabled = true;
     if (statusText) statusText.textContent = 'Ready';
 
@@ -1554,7 +1567,6 @@ class MuscleMapApp {
       return;
     }
 
-    // Load segmentation into viewer: prefer downsampled display version for faster 3D rendering
     const displayResult = this.inferenceExecutor.getResult('segmentation_display');
     const fullResult = this.inferenceExecutor.getResult('segmentation');
     const overlayFile = displayResult?.file || fullResult?.file;
@@ -1577,7 +1589,7 @@ class MuscleMapApp {
     const runBtn = document.getElementById('runSegmentation');
     const cancelBtn = document.getElementById('cancelButton');
     const statusText = document.getElementById('statusText');
-    if (runBtn) runBtn.disabled = false;
+    if (runBtn) runBtn.disabled = this.fileIOController.getSegmentEntries().length === 0;
     if (cancelBtn) cancelBtn.disabled = true;
     if (statusText) statusText.textContent = 'Error';
   }

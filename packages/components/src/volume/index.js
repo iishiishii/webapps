@@ -1,4 +1,6 @@
 export * from './geometry.js';
+export * from './layout.js';
+export * from './padding.js';
 export * from './connectedComponents.js';
 export * from './morphology.js';
 export * from './normalization.js';
