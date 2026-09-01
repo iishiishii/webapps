@@ -347,9 +347,16 @@
               >Cancel</button>
             </div>
           </div>
-          <button class="secondary-button" id="copyShareLink" type="button">
-            Copy share link
+          <button class="secondary-button" id="createShareLink" type="button">
+            Create share link
           </button>
+          <input
+            id="shareLink"
+            type="url"
+            aria-label="Share link"
+            readonly
+            hidden
+          />
           <output id="shareStatus" class="download-status" role="status" aria-live="polite" hidden></output>
           <output id="downloadStatus" class="download-status" role="status" aria-live="polite" hidden></output>
         </section>

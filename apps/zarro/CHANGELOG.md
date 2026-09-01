@@ -1,5 +1,12 @@
 # zarro
 
+## 0.1.22
+
+### Patch Changes
+
+- Compress share state into a Base64URL value and avoid extension-blocked clipboard writes.
+- Restore compact links with the same NVSlide pane framing and active pane.
+
 ## 0.1.21
 
 ### Patch Changes

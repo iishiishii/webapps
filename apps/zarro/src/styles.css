@@ -944,6 +944,18 @@ a:focus-visible {
   line-height: 1.35;
 }
 
+#shareLink {
+  width: 100%;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  color: var(--nd-color-text);
+  background: var(--nd-color-bg);
+  border: 1px solid var(--nd-color-border);
+  border-radius: var(--nd-radius-md);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.68rem;
+}
+
 #viewer {
   isolation: isolate;
 }

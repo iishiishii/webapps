@@ -20,6 +20,10 @@ import {
 import { AbortableTaskPool } from './abortable_task_pool'
 import { getBackendFromUrl } from './backend'
 import {
+  decodeCompactShareState,
+  encodeCompactShareState,
+} from './compact_share_state.ts'
+import {
   DEFAULT_LAYOUT_ID,
   LAYOUT_PRESET,
   viewerLayoutConfig,
@@ -434,7 +438,8 @@ const els = {
   niftiProgressBar: el<HTMLProgressElement>('niftiProgressBar'),
   niftiProgressText: el<HTMLOutputElement>('niftiProgressText'),
   cancelNifti: el<HTMLButtonElement>('cancelNifti'),
-  copyShareLink: el<HTMLButtonElement>('copyShareLink'),
+  createShareLink: el<HTMLButtonElement>('createShareLink'),
+  shareLink: el<HTMLInputElement>('shareLink'),
   shareStatus: el<HTMLOutputElement>('shareStatus'),
   downloadStatus: el<HTMLOutputElement>('downloadStatus'),
   canvas: el<HTMLCanvasElement>('nv-canvas'),
@@ -2299,8 +2304,7 @@ function setDefaultWindowForSelectedSource(): void {
   }
 }
 
-function initControlsFromUrl(): void {
-  const params = new URLSearchParams(window.location.search)
+function initControlsFromUrl(params: URLSearchParams): void {
   const requestedSource = params.get('source')
   if (requestedSource && isOmezarrSourceId(requestedSource)) {
     els.source.value = requestedSource
@@ -2369,6 +2373,7 @@ function initControlsFromUrl(): void {
 
 function updateUrlFromControls(): void {
   const url = new URL(window.location.href)
+  url.searchParams.delete('state')
   url.searchParams.delete('deepZoomPrototype')
   url.searchParams.delete('variant')
   const kind = currentSourceKind()
@@ -4225,34 +4230,34 @@ function setShareStatus(message: string): void {
   els.shareStatus.hidden = message.length === 0
 }
 
-async function writeClipboard(text: string): Promise<void> {
+async function createShareLink(): Promise<void> {
   try {
-    await navigator.clipboard.writeText(text)
-    return
-  } catch {
-    const input = document.createElement('textarea')
-    input.value = text
-    input.setAttribute('readonly', '')
-    input.style.position = 'fixed'
-    input.style.opacity = '0'
-    document.body.append(input)
-    input.select()
-    const copied = document.execCommand('copy')
-    input.remove()
-    if (!copied) throw new Error('The browser blocked clipboard access')
-  }
-}
-
-async function copyShareLink(): Promise<void> {
-  updateUrlFromControls()
-  const url = writeShareState(new URL(window.location.href), currentShareState())
-  window.history.replaceState(null, '', url)
-  try {
-    await writeClipboard(url.toString())
-    setShareStatus('Link copied — opening it restores these stores and viewer settings.')
+    updateUrlFromControls()
+    const expandedUrl = writeShareState(
+      new URL(window.location.href),
+      currentShareState(),
+    )
+    const url = new URL(expandedUrl.origin + expandedUrl.pathname)
+    url.searchParams.set(
+      'state',
+      await encodeCompactShareState(expandedUrl.searchParams),
+    )
+    const backend = expandedUrl.searchParams.get('backend')
+    if (backend) url.searchParams.set('backend', backend)
+    url.hash = expandedUrl.hash
+    window.history.replaceState(null, '', url)
+    els.shareLink.value = url.toString()
+    els.shareLink.hidden = false
+    els.shareLink.focus()
+    els.shareLink.select()
+    setShareStatus('Share link ready and selected. Press Ctrl+C to copy it.')
   } catch (error) {
+    if (!els.shareLink.hidden) {
+      els.shareLink.focus()
+      els.shareLink.select()
+    }
     setShareStatus(
-      error instanceof Error ? error.message : 'Unable to copy the share link',
+      error instanceof Error ? error.message : 'Unable to create the share link',
     )
   }
 }
@@ -5401,7 +5406,13 @@ async function performReloadVolume(
 }
 
 async function main(): Promise<void> {
-  initControlsFromUrl()
+  const outerParams = new URLSearchParams(window.location.search)
+  const params =
+    (await decodeCompactShareState(outerParams.get('state'))) ?? outerParams
+  for (const [key, value] of outerParams) {
+    if (key !== 'state') params.set(key, value)
+  }
+  initControlsFromUrl(params)
   updateUrlFromControls()
   syncStatsVisibility()
 
@@ -5604,8 +5615,8 @@ async function main(): Promise<void> {
     setDownloadStatus('')
     syncDownloadControl()
   })
-  els.copyShareLink.addEventListener('click', () => {
-    void copyShareLink()
+  els.createShareLink.addEventListener('click', () => {
+    void createShareLink()
   })
 
   await reloadVolume({ reloadSource: true, view: initialSharedView })

@@ -2,6 +2,21 @@
 // cross-origin isolation, worker loading, and app boot. Runs against `vite preview`
 // (see playwright.config.js) so it exercises the built, header-served output.
 import { test, expect } from "@playwright/test";
+import { decodeCompactShareState } from "../src/compact_share_state.ts";
+
+async function createShareUrl(page) {
+  await page.getByRole("button", { name: "Create share link" }).click();
+  await expect(page.locator("#shareLink")).toBeVisible();
+  await expect(page.locator("#shareStatus")).toContainText("Share link ready");
+  return page.locator("#shareLink").inputValue();
+}
+
+async function decodedShareParams(url) {
+  const state = new URL(url).searchParams.get("state");
+  const params = await decodeCompactShareState(state);
+  expect(params).not.toBeNull();
+  return params;
+}
 
 async function readDownload(download) {
   const stream = await download.createReadStream();
@@ -307,15 +322,6 @@ test("translated OME-Zarr URLs load as one composite volume", async ({ page }) =
   });
   await page.addInitScript(() => {
     window.__locationChangeCount = 0;
-    window.__copiedText = "";
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: {
-        writeText: async (text) => {
-          window.__copiedText = text;
-        },
-      },
-    });
     const dispatchEvent = EventTarget.prototype.dispatchEvent;
     EventTarget.prototype.dispatchEvent = function (event) {
       if (event.type === "locationChange") {
@@ -831,10 +837,8 @@ test("translated OME-Zarr URLs load as one composite volume", async ({ page }) =
   const sharedPan = await Promise.all(
     panFields.map((selector) => page.locator(selector).inputValue()),
   );
-  await page.getByRole("button", { name: "Copy share link" }).click();
-  await expect(page.locator("#shareStatus")).toContainText("Link copied");
-  const sharedUrl = await page.evaluate(() => window.__copiedText);
-  const sharedParams = new URL(sharedUrl).searchParams;
+  const sharedUrl = await createShareUrl(page);
+  const sharedParams = await decodedShareParams(sharedUrl);
   expect(sharedParams.getAll("url")).toHaveLength(2);
   expect(sharedParams.get("layout")).toBe("31");
   expect(sharedParams.get("zoom")).toBe("2");
@@ -886,10 +890,9 @@ test("translated OME-Zarr URLs load as one composite volume", async ({ page }) =
     interactivePoints,
     locationChangesBeforeReloadClick,
   );
-  await page.getByRole("button", { name: "Copy share link" }).click();
-  const clickedCrosshair = new URL(
-    await page.evaluate(() => window.__copiedText),
-  ).searchParams.get("crosshair");
+  const clickedCrosshair = (await decodedShareParams(
+    await createShareUrl(page),
+  )).get("crosshair");
 
   await expect(page.locator("#activeLevel")).toHaveAttribute("data-requested-level", "0");
   await expect(page.locator("#activeLevel")).toHaveAttribute("data-delivered-level", "0");
@@ -901,10 +904,9 @@ test("translated OME-Zarr URLs load as one composite volume", async ({ page }) =
   await page.getByLabel("Stream details").check();
   await expect(page.locator("#hud")).toContainText("30 x 16 x 16 uint8");
   expect(chunkRequestsByLevel.get(0)).toBeGreaterThan(0);
-  await page.getByRole("button", { name: "Copy share link" }).click();
-  const settledCrosshair = new URL(
-    await page.evaluate(() => window.__copiedText),
-  ).searchParams.get("crosshair");
+  const settledCrosshair = (await decodedShareParams(
+    await createShareUrl(page),
+  )).get("crosshair");
   expect(settledCrosshair).toBe(clickedCrosshair);
 
   await page.getByRole("button", { name: "Remove OME-Zarr store 2" }).click();
@@ -981,10 +983,10 @@ test("translated OME-Zarr URLs load as one composite volume", async ({ page }) =
   await expect(page.locator("#nv-canvas")).toHaveAttribute("data-window-min", "0");
   await expect(page.locator("#nv-canvas")).toHaveAttribute("data-window-max", "60");
   await expect(page.getByLabel(/opacity/i)).toHaveCount(0);
-  await page.getByRole("button", { name: "Copy share link" }).click();
-  const layeredShareUrl = await page.evaluate(() => window.__copiedText);
-  expect(new URL(layeredShareUrl).searchParams.get("crosshair")).toBe(clickedCrosshair);
-  const sharedLayers = JSON.parse(new URL(layeredShareUrl).searchParams.get("layers"));
+  const layeredShareUrl = await createShareUrl(page);
+  const layeredShareParams = await decodedShareParams(layeredShareUrl);
+  expect(layeredShareParams.get("crosshair")).toBe(clickedCrosshair);
+  const sharedLayers = JSON.parse(layeredShareParams.get("layers"));
   expect(sharedLayers.every((layer) => !("opacity" in layer))).toBe(true);
   delayDapiMetadata = true;
   await page.goto(layeredShareUrl);
@@ -1501,9 +1503,18 @@ test("generic uint16 share contrast is replaced from streamed signal", async ({ 
     "true",
   );
   const sharedExport = await niftiEstimate(page);
-  await page.locator("#copyShareLink").click();
+  await page.locator("#createShareLink").click();
+  await expect.poll(() => new URL(page.url()).searchParams.get("state"))
+    .toMatch(/^gz\./);
   const sharedUrl = page.url();
-  expect(new URL(sharedUrl).searchParams.has("nvslide")).toBe(true);
+  await expect(page.locator("#shareLink")).toBeVisible();
+  await expect(page.locator("#shareLink")).toHaveValue(sharedUrl);
+  await expect(page.locator("#shareLink")).toBeFocused();
+  expect(await page.locator("#shareLink").evaluate((input) => ({
+    start: input.selectionStart,
+    end: input.selectionEnd,
+    length: input.value.length,
+  }))).toEqual({ start: 0, end: sharedUrl.length, length: sharedUrl.length });
   await page.goto(sharedUrl);
   await expect.poll(async () => page.locator('.nvslide-pane').evaluateAll(
     (panes) => panes.map((pane) => pane.dataset.framing),
@@ -1633,8 +1644,7 @@ test("zoom control represents OME-Zarr levels directly", async ({ page }) => {
   await expect(page.locator("#axialSliceValue")).toHaveText("42 / 128");
   await expect(page.locator("#visibleLevel")).toHaveText("L4");
   await expect(page.locator("#zoomValue")).toHaveText("L4");
-  await page.getByRole("button", { name: "Copy share link" }).click();
-  const levelFourUrl = page.url();
+  const levelFourUrl = await createShareUrl(page);
   await page.goto(levelFourUrl);
   await expect(page.locator("#zoom")).toHaveValue("4");
   await expect(page.locator("#zoomValue")).toHaveText("L4");
