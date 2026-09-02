@@ -1,6 +1,17 @@
 // LLM provider abstraction. Supports Anthropic and OpenAI-compatible APIs.
 // Provider is selected via LLM_PROVIDER env var (default: anthropic).
 // Model is selected via LLM_MODEL env var or the model parameter.
+//
+// Two call modes:
+//   callLLM()  — single-shot structured output via forced tool_use (existing)
+//   callChat() — multi-turn chat completions via OpenAI-compatible API (ReAct)
+//
+// callChat() uses raw fetch against any OpenAI-compatible endpoint:
+//   OpenAI, vLLM, Ollama, together.ai, llama.cpp, etc.
+// Configure via:
+//   LLM_BASE_URL  — API base (default: https://api.openai.com/v1)
+//   LLM_API_KEY   — Bearer token (falls back to OPENAI_API_KEY)
+//   LLM_MODEL     — model ID (default: gpt-4o)
 
 /**
  * Call the LLM with structured output via tool_use / function calling.
@@ -88,4 +99,84 @@ async function callOpenAI({ systemPrompt, userMessage, schema, toolName, tempera
     throw new Error("LLM did not produce function call output");
   }
   return JSON.parse(toolCall.function.arguments);
+}
+
+// ---------------------------------------------------------------------------
+// Multi-turn chat completions via raw fetch (OpenAI-compatible, no SDK)
+// ---------------------------------------------------------------------------
+
+/**
+ * Send a multi-turn chat completion request to any OpenAI-compatible endpoint.
+ * Used by the ReAct agent loop — supports tool_choice "auto" and streaming
+ * tool calls across turns. No SDK dependency.
+ *
+ * @param {object} opts
+ * @param {object[]} opts.messages  - full message history (system + user + assistant + tool)
+ * @param {object[]} [opts.tools]   - OpenAI-format tool definitions
+ * @param {number}   [opts.temperature]
+ * @param {number}   [opts.maxTokens]
+ * @param {string}   [opts.model]
+ * @param {string}   [opts.baseUrl]
+ * @param {string}   [opts.apiKey]
+ * @returns {Promise<{message: object, usage: object}>} assistant message + token usage
+ */
+export async function callChat({
+  messages,
+  tools,
+  temperature = 0,
+  maxTokens = 8192,
+  model,
+  baseUrl,
+  apiKey,
+}) {
+  const resolvedBase = (
+    baseUrl ||
+    process.env.LLM_BASE_URL ||
+    "https://api.openai.com/v1"
+  ).replace(/\/+$/, "");
+
+  const resolvedKey =
+    apiKey || process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || "";
+
+  const resolvedModel = model || process.env.LLM_MODEL || "gpt-4o";
+
+  const body = {
+    model: resolvedModel,
+    temperature,
+    max_tokens: maxTokens,
+    messages,
+  };
+
+  if (tools && tools.length > 0) {
+    body.tools = tools;
+    body.tool_choice = "auto";
+  }
+
+  const headers = { "Content-Type": "application/json" };
+  if (resolvedKey) {
+    headers["Authorization"] = `Bearer ${resolvedKey}`;
+  }
+
+  const res = await fetch(`${resolvedBase}/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`LLM API ${res.status}: ${text}`);
+  }
+
+  const data = await res.json();
+  const msg = data.choices[0].message;
+
+  return {
+    message: msg,
+    usage: {
+      prompt_tokens: data.usage?.prompt_tokens || 0,
+      completion_tokens: data.usage?.completion_tokens || 0,
+      total_tokens: data.usage?.total_tokens || 0,
+    },
+  };
 }
