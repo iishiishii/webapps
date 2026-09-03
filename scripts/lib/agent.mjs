@@ -21,18 +21,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * the tool's parsed arguments and returns a string result (the Observation).
  *
  * Delegates to existing lib modules where possible:
- *   - catalog.mjs for component listing
  *   - validate.mjs for syntax / schema validation
+ *
+ * There is deliberately no list_shared_components action: the component catalog
+ * is already in the system prompt, and serving it again as an Observation cost a
+ * round trip plus a second, larger copy of the same data in every later turn.
  *
  * @param {object} opts
  * @param {string} opts.root - repo root
- * @param {{name: string, module: string, description: string}[]} opts.catalog
  * @returns {Record<string, (args: object) => Promise<string>>}
  */
-export function buildKnownActions({ root, catalog }) {
+export function buildKnownActions({ root }) {
   return {
-    list_shared_components: async () => JSON.stringify(catalog, null, 2),
-
     list_existing_apps: async () => {
       const entries = await readdir(join(root, "apps"), { withFileTypes: true });
       return JSON.stringify(entries.filter((e) => e.isDirectory()).map((e) => e.name));
@@ -44,10 +44,9 @@ export function buildKnownActions({ root, catalog }) {
         return "Error: path escapes apps/ directory.";
       }
       try {
-        const content = await readFile(safePath, "utf8");
-        return content.length > 15000
-          ? content.slice(0, 15000) + "\n... (truncated)"
-          : content;
+        // Not truncated here: runReactLoop caps every Observation centrally, so
+        // there is one knob rather than a per-tool limit that drifts out of sync.
+        return await readFile(safePath, "utf8");
       } catch (err) {
         return `Error reading ${app}/${file}: ${err.message}`;
       }
@@ -91,14 +90,6 @@ export function buildKnownActions({ root, catalog }) {
 /** @returns {object[]} */
 export function buildToolDefinitions() {
   return [
-    {
-      type: "function",
-      function: {
-        name: "list_shared_components",
-        description: "List all shared components available in @neurodesk/webapp-components.",
-        parameters: { type: "object", properties: {}, required: [] },
-      },
-    },
     {
       type: "function",
       function: {
@@ -173,6 +164,27 @@ export function buildToolDefinitions() {
 // ---------------------------------------------------------------------------
 
 /**
+ * Cap an Observation before it enters the conversation.
+ *
+ * Tool results are re-sent to the model on every subsequent turn, so an oversized
+ * Observation is not paid once - it is paid (turns remaining) times. A 15KB file
+ * read landing on turn 3 of a 9-turn run costs ~26k tokens by itself.
+ *
+ * @param {string} text
+ * @param {number} limit - max characters kept
+ * @param {string} toolName
+ * @returns {string}
+ */
+function truncateObservation(text, limit, toolName) {
+  if (text.length <= limit) return text;
+  return (
+    text.slice(0, limit) +
+    `\n... (truncated: ${toolName} returned ${text.length} chars, showing the first ${limit}.` +
+    ` Narrow your request if you need the rest.)`
+  );
+}
+
+/**
  * Try to extract a final JSON answer from text content.
  * Supports: Answer: {...}, ```json {...} ```, and raw JSON.
  */
@@ -204,11 +216,17 @@ function extractJsonAnswer(text) {
  * @param {object[]} opts.tools       - OpenAI-format tool definitions
  * @param {number}  [opts.temperature]
  * @param {number}  [opts.maxTurns]   - default 30
+ * @param {number}  [opts.maxObservationChars] - default 6000. Cap on the tool result stored in
+ *   the conversation (not just logged). Every stored character is re-sent on every later turn.
  * @param {boolean} [opts.logTurns]   - default true
  * @param {string}  [opts.model]      - passed through to callChat
  * @param {string}  [opts.baseUrl]    - passed through to callChat
  * @param {string}  [opts.apiKey]     - passed through to callChat
  * @param {function} [opts.onFinal]   - callback on final answer
+ * @param {function} [opts.validateAnswer] - async (answer) => { ok: boolean, feedback?: string }.
+ *   Gate on the final Answer. When it returns { ok: false }, `feedback` is pushed back into the
+ *   conversation as an Observation and the loop continues, so the agent repairs its answer in
+ *   place instead of the caller discarding a whole run's worth of context.
  * @returns {Promise<{answer: object, metrics: object}>}
  */
 export async function runReactLoop({
@@ -218,11 +236,13 @@ export async function runReactLoop({
   tools,
   temperature = 0,
   maxTurns = 30,
+  maxObservationChars = 6000,
   logTurns = true,
   model,
   baseUrl,
   apiKey,
   onFinal,
+  validateAnswer,
 }) {
   const thoughtInstruction =
     "\nIMPORTANT: Before calling any tool, you must output a short 'Thought' explaining your reasoning.";
@@ -237,6 +257,7 @@ export async function runReactLoop({
   let totalPromptTokens = 0;
   let totalCompletionTokens = 0;
   const turnMetrics = [];
+  let rejectedAnswers = 0;
 
   for (let i = 0; i < maxTurns; i++) {
     const turnStart = Date.now();
@@ -300,18 +321,31 @@ export async function runReactLoop({
           resultContent = `Error: Tool ${tc.name} not found.`;
         }
 
+        // Cap the stored Observation, then log from the stored copy so the console
+        // shows what the model actually receives.
+        const storedContent = truncateObservation(
+          resultContent,
+          maxObservationChars,
+          tc.name
+        );
+
         if (logTurns) {
           const logContent =
-            resultContent.length > 2000
-              ? resultContent.slice(0, 2000) + "\n... (truncated)"
-              : resultContent;
+            storedContent.length > 2000
+              ? storedContent.slice(0, 2000) + "\n... (truncated in log)"
+              : storedContent;
           console.log(`Observation (${tc.name}):\n${logContent}`);
+          if (storedContent.length < resultContent.length) {
+            console.log(
+              `  [dropped ${resultContent.length - storedContent.length} chars before sending to the model]`
+            );
+          }
         }
 
         messages.push({
           role: "tool",
           tool_call_id: tc.id,
-          content: resultContent,
+          content: storedContent,
         });
       }
     }
@@ -325,21 +359,39 @@ export async function runReactLoop({
           const jsonEnd = jsonAnswerStr.lastIndexOf("}");
           const finalAnswer = JSON.parse(jsonAnswerStr.slice(jsonStart, jsonEnd + 1));
 
-          console.log("\n--- Final Answer Found ---");
-          if (onFinal) onFinal(finalAnswer);
+          const verdict = validateAnswer ? await validateAnswer(finalAnswer) : null;
 
-          return {
-            answer: finalAnswer,
-            metrics: {
-              status: "success",
-              total_time_ms: Date.now() - startTime,
-              total_tokens: totalTokens,
-              prompt_tokens: totalPromptTokens,
-              completion_tokens: totalCompletionTokens,
-              total_turns: i + 1,
-              turn_history: turnMetrics,
-            },
-          };
+          if (verdict && verdict.ok === false) {
+            // Repair in place: hand the errors back and keep the accumulated
+            // context rather than throwing the whole run away.
+            rejectedAnswers += 1;
+            console.warn(
+              `\n--- Answer rejected (${rejectedAnswers}); asking the agent to fix it ---`
+            );
+            messages.push({
+              role: "user",
+              content:
+                verdict.feedback ||
+                "Your Answer failed validation. Fix it and provide the Answer again.",
+            });
+          } else {
+            console.log("\n--- Final Answer Found ---");
+            if (onFinal) onFinal(finalAnswer);
+
+            return {
+              answer: finalAnswer,
+              metrics: {
+                status: "success",
+                total_time_ms: Date.now() - startTime,
+                total_tokens: totalTokens,
+                prompt_tokens: totalPromptTokens,
+                completion_tokens: totalCompletionTokens,
+                total_turns: i + 1,
+                rejected_answers: rejectedAnswers,
+                turn_history: turnMetrics,
+              },
+            };
+          }
         } catch (err) {
           console.error(`Error parsing final answer: ${err.message}`);
           messages.push({
@@ -365,11 +417,15 @@ export async function runReactLoop({
     });
   }
 
-  console.warn("Max turns reached without a final answer.");
+  const exhaustedReason = rejectedAnswers
+    ? `Max turns reached; the last ${rejectedAnswers} answer(s) failed validation.`
+    : "Max turns reached without a final answer.";
+  console.warn(exhaustedReason);
   return {
-    answer: { error: "Max turns reached without a final answer." },
+    answer: { error: exhaustedReason },
     metrics: {
-      status: "failed_max_turns",
+      status: rejectedAnswers ? "failed_validation" : "failed_max_turns",
+      rejected_answers: rejectedAnswers,
       total_time_ms: Date.now() - startTime,
       total_tokens: totalTokens,
       prompt_tokens: totalPromptTokens,

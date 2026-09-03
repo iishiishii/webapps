@@ -34,7 +34,7 @@ import {
 import { validateAnalysis, validateFile } from "./lib/validate.mjs";
 import { writeApp, buildRegistryEntry } from "./lib/file-writer.mjs";
 import { runReactLoop, buildKnownActions, buildToolDefinitions } from "./lib/agent.mjs";
-import { PREAMBLE, EXAMPLE, PLAN, GENERATE } from "./lib/prompts.mjs";
+import { PREAMBLE, EXAMPLE, PLAN, GENERATE, ASTRA_CONTRACT } from "./lib/prompts.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -88,8 +88,10 @@ if (estimateTokens(catalogText) > 3000) {
 }
 
 // --- Shared tool definitions for prompts ---
+// No list_shared_components: the catalog is already in both system prompts, so a
+// tool that re-serves it only bought a round trip and a second copy in context.
 const actionList = [
-  "list_shared_components", "list_existing_apps", "read_app_source",
+  "list_existing_apps", "read_app_source",
   "list_app_files", "validate_astra_schema", "validate_syntax",
 ].map((n) => `- ${n}`).join("\n");
 
@@ -113,10 +115,10 @@ a structured AppPlan that describes the app's scientific workflow (using ASTRA
 spec format for inputs/outputs/decisions) and its scaffolding (files, registry,
 viewer type).
 
-The AppPlan.analysis field must follow the ASTRA spec:
-- inputs: what data the app consumes (NIfTI, DICOM, etc.)
-- outputs: what the app produces (segmentation masks, metrics, visualizations)
-- decisions: methodological choices the user can make (model, preprocessing, threshold)
+The AppPlan.analysis field describes the app's scientific workflow: the data it
+consumes, the artifacts it produces, and the methodological choices the user can make.
+
+${ASTRA_CONTRACT}
 
 Rules:
 - App names are lowercase kebab-case
@@ -149,7 +151,7 @@ if (useReact) {
   // -----------------------------------------------------------------------
   // ReAct mode: agentic Thought/Action/PAUSE/Observation loop
   // -----------------------------------------------------------------------
-  const knownActions = buildKnownActions({ root, catalog });
+  const knownActions = buildKnownActions({ root });
   const tools = buildToolDefinitions();
 
   // Step 1: Plan via ReAct loop
@@ -163,6 +165,31 @@ if (useReact) {
     `\nAvailable shared components:\n${catalogText}`,
   ].join("\n");
 
+  // Gate the final Answer on ASTRA validation. Returning { ok: false } feeds the
+  // errors back into the loop so the agent repairs its plan in place -- a failed
+  // plan used to exit(1) and discard the entire run's context.
+  const validateAppPlan = async (answer) => {
+    if (!answer || !answer.analysis) return { ok: true };
+    const { valid, errors } = await validateAnalysis(answer.analysis);
+    if (valid) return { ok: true };
+    return {
+      ok: false,
+      feedback: `Your Answer's "analysis" field failed ASTRA schema validation:
+
+${JSON.stringify(errors, null, 2)}
+
+Fix every error above. Re-read the ASTRA contract in your instructions -- the most
+common mistakes are: a missing top-level "id"; "decisions" as an array instead of an
+object keyed by decision id; an "input" carrying keys outside the allowed set (there is
+no "required" key); an input "type" other than "data"/"analysis"; and an output "type"
+other than "metric"/"figure"/"table"/"data"/"report".
+
+Call validate_astra_schema with the corrected analysis object. Only once it returns
+"Valid." should you output the full corrected AppPlan as the Answer. Keep every other
+field of the AppPlan unchanged.`,
+    };
+  };
+
   console.log("Step 1 (ReAct): Generating app plan...");
   const step1Result = await runReactLoop({
     systemPrompt: step1System,
@@ -171,17 +198,19 @@ if (useReact) {
     tools,
     temperature: 0.8,
     maxTurns: 15,
+    validateAnswer: validateAppPlan,
   });
   appPlan = step1Result.answer;
-  console.log(`Step 1 metrics: ${step1Result.metrics.total_turns} turns, ${step1Result.metrics.total_tokens} tokens`);
+  console.log(
+    `Step 1 metrics: ${step1Result.metrics.total_turns} turns, ${step1Result.metrics.total_tokens} tokens` +
+      (step1Result.metrics.rejected_answers
+        ? `, ${step1Result.metrics.rejected_answers} answer(s) repaired`
+        : "")
+  );
 
-  // Validate ASTRA analysis
-  if (appPlan.analysis) {
-    const { valid, errors } = await validateAnalysis(appPlan.analysis);
-    if (!valid) {
-      console.error(`ASTRA validation failed: ${JSON.stringify(errors, null, 2)}`);
-      process.exit(1);
-    }
+  if (step1Result.metrics.status !== "success") {
+    console.error(`Step 1 failed: ${appPlan.error}`);
+    process.exit(1);
   }
 
   // Step 2: Generate code via ReAct loop
@@ -190,6 +219,7 @@ if (useReact) {
     actionList,
     "\n",
     GENERATE,
+    `\nAvailable shared components:\n${catalogText}`,
   ].join("\n");
 
   console.log("\nStep 2 (ReAct): Generating code...");
