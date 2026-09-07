@@ -9,6 +9,18 @@ import { fileURLToPath } from "node:url";
 import { callChat } from "./call-llm.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const APP_TEMPLATE_FILES = [
+  "package.json",
+  "index.html",
+  "src/main.js",
+  "src/config.js",
+  "vite.config.js",
+  "eslint.config.js",
+  "playwright.config.js",
+  "public/_headers",
+  "test/config.test.js",
+  "e2e/smoke.spec.js",
+];
 
 // ---------------------------------------------------------------------------
 // Built-in tool actions for the webapp generation agent
@@ -31,6 +43,20 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  */
 export function buildKnownActions({ root }) {
   return {
+    read_app_template: async () => {
+      const templateRoot = join(root, "templates", "app-template");
+      const contents = await Promise.all(
+        APP_TEMPLATE_FILES.map(async (file) => {
+          try {
+            return `--- ${file} ---\n${await readFile(join(templateRoot, file), "utf8")}`;
+          } catch (err) {
+            return `--- ${file} ---\nError: ${err.message}`;
+          }
+        }),
+      );
+      return contents.join("\n\n");
+    },
+
     list_existing_apps: async () => {
       const entries = await readdir(join(root, "apps"), { withFileTypes: true });
       return JSON.stringify(entries.filter((e) => e.isDirectory()).map((e) => e.name));
@@ -88,6 +114,15 @@ export function buildKnownActions({ root }) {
 /** @returns {object[]} */
 export function buildToolDefinitions(names) {
   const definitions = [
+    {
+      type: "function",
+      function: {
+        name: "read_app_template",
+        description:
+          "Read the complete canonical templates/app-template scaffold used for new apps.",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
     {
       type: "function",
       function: {
@@ -220,6 +255,7 @@ function extractJsonAnswer(text) {
  * @param {number}  [opts.temperature]
  * @param {number}  [opts.maxTurns]   - default 30
  * @param {number}  [opts.maxTokens]  - maximum completion tokens per turn
+ * @param {number}  [opts.maxToolTurns] - disable tools after this many tool-calling turns
  * @param {number}  [opts.maxObservationChars] - default 6000. Cap on the tool result stored in
  *   the conversation (not just logged). Every stored character is re-sent on every later turn.
  * @param {boolean} [opts.logTurns]   - default true
@@ -241,6 +277,7 @@ export async function runReactLoop({
   temperature = 0,
   maxTurns = 30,
   maxTokens = 8192,
+  maxToolTurns = Infinity,
   maxObservationChars = 6000,
   logTurns = true,
   model,
@@ -260,6 +297,7 @@ export async function runReactLoop({
   let totalCompletionTokens = 0;
   const turnMetrics = [];
   let rejectedAnswers = 0;
+  let toolTurns = 0;
 
   for (let i = 0; i < maxTurns; i++) {
     const turnStart = Date.now();
@@ -269,9 +307,10 @@ export async function runReactLoop({
     }
 
     // Call the LLM via generic callChat (raw fetch, no SDK)
+    const availableTools = toolTurns < maxToolTurns ? tools : [];
     const { message, usage } = await callChat({
       messages,
-      tools,
+      tools: availableTools,
       temperature,
       maxTokens,
       model,
@@ -305,6 +344,7 @@ export async function runReactLoop({
 
     // Branch 1: Tool calls present — execute and feed Observations back
     if (toolCalls.length > 0) {
+      toolTurns += 1;
       action = toolCalls[0].name;
 
       if (logTurns) {

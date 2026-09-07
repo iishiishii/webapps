@@ -157,11 +157,7 @@ if (useReact) {
   // Agentic mode: multi-turn tool-calling loop
   // -----------------------------------------------------------------------
   const knownActions = buildKnownActions({ root });
-  const step1Tools = buildToolDefinitions([
-    "list_existing_apps",
-    "list_app_files",
-    "read_app_source",
-  ]);
+  const step1Tools = buildToolDefinitions(["read_app_template"]);
   const step2Tools = buildToolDefinitions([
     "list_existing_apps",
     "list_app_files",
@@ -194,13 +190,14 @@ Fix every error and output the complete corrected AppPlan.`,
   console.log("Step 1 (ReAct): Generating app plan...");
   const step1Result = await runReactLoop({
     systemPrompt: step1System,
-    question: `Design a neuroimaging webapp for this description:\n\n${description}\n\nProduce the final Answer as a complete JSON AppPlan.`,
+    question: `Design a neuroimaging webapp for this description:\n\n${description}\n\nRead the canonical app template, then produce the final Answer as a complete JSON AppPlan.`,
     knownActions,
     tools: step1Tools,
     temperature: 0.4,
     maxTurns: 5,
     maxTokens: 3000,
-    maxObservationChars: 3000,
+    maxToolTurns: 1,
+    maxObservationChars: 8000,
     validateAnswer: validateFinalAppPlan,
   });
   appPlan = step1Result.answer;

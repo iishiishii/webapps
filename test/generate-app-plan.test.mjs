@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import {
+  buildKnownActions,
+  buildToolDefinitions,
+} from "../scripts/lib/agent.mjs";
 import { validateAppPlan } from "../scripts/lib/validate.mjs";
+
+const root = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 
 const validPlan = {
   name: "lesion-seg",
@@ -65,4 +72,18 @@ test("validateAppPlan reports envelope and ASTRA errors together", async () => {
     ),
   );
   assert.ok(result.errors.some((error) => error.instancePath === "/analysis/id"));
+});
+
+test("Step 1 can inspect the complete canonical app template in one call", async () => {
+  const tools = buildToolDefinitions(["read_app_template"]);
+  assert.deepEqual(
+    tools.map(({ function: definition }) => definition.name),
+    ["read_app_template"],
+  );
+
+  const template = await buildKnownActions({ root }).read_app_template({});
+  assert.match(template, /--- package\.json ---/);
+  assert.match(template, /--- src\/main\.js ---/);
+  assert.match(template, /--- e2e\/smoke\.spec\.js ---/);
+  assert.doesNotMatch(template, /Error:/);
 });

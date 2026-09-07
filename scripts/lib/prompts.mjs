@@ -127,9 +127,10 @@ Rules:
 - File manifest lists all files to generate (src/main.tsx, src/App.tsx, etc.)
 - Model manifests are always null (researchers add them manually)
 
-The shared-component catalog is already in the prompt. If repository context is needed,
-inspect at most one similar app before producing the plan. The complete AppPlan and its
-analysis are validated automatically after your Answer.`;
+The shared-component catalog is already in the prompt. Use read_app_template once to
+inspect the canonical templates/app-template scaffold. Do not inspect existing apps.
+After reading the template, produce the complete plan immediately. The complete AppPlan
+and its analysis are validated automatically after your Answer.`;
 
 export const GENERATE = `You are generating production React/TypeScript code for a neuroimaging webapp.
 Given an AppPlan, produce the file contents for every file in the fileManifest.
