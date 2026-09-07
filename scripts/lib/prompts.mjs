@@ -1,52 +1,26 @@
-// ReAct prompt constants for the LLM app-generation pipeline.
-// Mirrors the Thought -> Action -> PAUSE -> Observation loop from
-// replicatorbench/core/prompts.py, adapted for neuroimaging webapp generation.
+// Prompt constants for the LLM app-generation pipeline.
+// The agentic loop in agent.mjs handles tool-calling mechanics via the
+// OpenAI-compatible API (tool_choice: "auto"). These prompts focus on
+// domain expertise, not agent protocol.
 
 export const PREAMBLE = `You are an expert neuroimaging webapp architect. You design and build
 browser-native neuroimaging tools for the Neurodesk webapps monorepo.
-You operate in a loop of Thought, Action, PAUSE, Observation.
 
-At the end of the loop, you output an Answer in JSON format.
-
-Use Thought to describe your reasoning about the task and what actions you need to take.
-Use Action to run one of the actions available to you - then return PAUSE.
-Observation will be the result of running those actions.
+Use the available tools to explore the monorepo before producing your answer.
+When you have gathered enough information, output your final Answer as a JSON object.
 
 Your available actions are:`;
 
-export const EXAMPLE = `Example Session:
+export const EXAMPLE = `Example workflow for designing a brain lesion segmentation app:
 
-Question: Design a neuroimaging webapp for brain lesion segmentation with NIfTI overlay.
-
-Thought: The shared components are already listed for me at the end of these instructions, so
-I do not need to look them up. What I don't know is how existing apps are structured, so I
-should check whether one of them already solves a similar problem.
-
-[You call the list_existing_apps tool. You will be called again with this observation:]
-
-Observation: ["calmar", "musclemap", "vesselboost", "spinalcordtoolbox", ...]
-
-Thought: Calmar handles lesion segmentation. Let me inspect its structure for reference.
-
-[You call the read_app_source tool with {"app": "calmar", "file": "web/index.html"}. You will be called again with this observation:]
-
-Observation: <!DOCTYPE html>...
-
-Thought: I now have enough context. Calmar uses a multi-stage pipeline with ViewerController.
-For the new app I will use React + Vite with the NiivueViewer component and ONNX Runtime Web
-for inference. Before answering I must check my analysis against the schema.
-
-[You call the validate_astra_schema tool with your analysis object. You will be called again with this observation:]
-
-Observation: Valid.
-
-Thought: The analysis conforms to the ASTRA schema, so I can produce the final AppPlan.
-Answer: {
-  "name": "lesion-seg",
-  "title": "Lesion Segmentation",
-  "description": "Brain lesion segmentation with NIfTI overlay",
-  ...
-}`;
+1. Call list_shared_components to discover available components
+   -> ViewerController, WorkerBridge, SimpleFileIOController, etc.
+2. Call list_existing_apps to find reference implementations
+   -> calmar, vesselboost, spinalcordtoolbox, etc.
+3. Call read_app_source to inspect a similar app (e.g. calmar's index.html)
+   -> Learn the pipeline pattern, component usage, viewer setup
+4. Produce the final Answer as JSON:
+   {"name": "lesion-seg", "title": "Lesion Segmentation", ...}`;
 
 // ---------------------------------------------------------------------------
 // ASTRA contract

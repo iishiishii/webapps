@@ -1,8 +1,6 @@
-// ReAct agent loop for the LLM app-generation pipeline.
-// Mirrors replicatorbench/core/agent.py: multi-turn Thought/Action/PAUSE/Observation
-// loop with native tool calling.
-//
-// Uses callChat() from call-llm.mjs (raw fetch, no SDK, any OpenAI-compatible endpoint).
+// Agentic tool-calling loop for the LLM app-generation pipeline.
+// Uses native OpenAI-compatible tool calling (tool_choice: "auto") via
+// callChat() from call-llm.mjs (raw fetch, no SDK, any compatible endpoint).
 // Tool actions delegate to existing validate.mjs / catalog.mjs where possible.
 
 import { readdir, readFile } from "node:fs/promises";
@@ -160,7 +158,7 @@ export function buildToolDefinitions() {
 }
 
 // ---------------------------------------------------------------------------
-// ReAct loop
+// Agentic tool-calling loop
 // ---------------------------------------------------------------------------
 
 /**
@@ -204,9 +202,9 @@ function extractJsonAnswer(text) {
 }
 
 /**
- * Run the ReAct agent loop.
+ * Run the agentic tool-calling loop.
  *
- * The agent operates in a loop of Thought, Action, PAUSE, Observation until
+ * The agent calls tools via native OpenAI-compatible function calling until
  * it produces a final Answer JSON or exhausts maxTurns.
  *
  * @param {object} opts
@@ -244,11 +242,8 @@ export async function runReactLoop({
   onFinal,
   validateAnswer,
 }) {
-  const thoughtInstruction =
-    "\nIMPORTANT: Before calling any tool, you must output a short 'Thought' explaining your reasoning.";
-
   const messages = [
-    { role: "system", content: systemPrompt + thoughtInstruction },
+    { role: "system", content: systemPrompt },
     { role: "user", content: question },
   ];
 

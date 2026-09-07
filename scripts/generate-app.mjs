@@ -7,7 +7,7 @@
 //   Step 2 (generation, T=0.2): AppPlan -> file contents
 //
 // Two execution modes:
-//   ReAct (default): agentic Thought/Action/PAUSE/Observation loop via any
+//   Agentic (default): multi-turn tool-calling loop via any
 //     OpenAI-compatible endpoint (vLLM, Ollama, together.ai, OpenAI, etc.)
 //   Single-shot (--no-react): forced tool_use via Anthropic/OpenAI SDK
 //
@@ -33,8 +33,18 @@ import {
 } from "./lib/catalog.mjs";
 import { validateAnalysis, validateFile } from "./lib/validate.mjs";
 import { writeApp, buildRegistryEntry } from "./lib/file-writer.mjs";
-import { runReactLoop, buildKnownActions, buildToolDefinitions } from "./lib/agent.mjs";
-import { PREAMBLE, EXAMPLE, PLAN, GENERATE, ASTRA_CONTRACT } from "./lib/prompts.mjs";
+import {
+  runReactLoop,
+  buildKnownActions,
+  buildToolDefinitions,
+} from "./lib/agent.mjs";
+import {
+  PREAMBLE,
+  EXAMPLE,
+  PLAN,
+  GENERATE,
+  ASTRA_CONTRACT,
+} from "./lib/prompts.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -43,26 +53,30 @@ const root = join(__dirname, "..");
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const force = args.includes("--force");
-const useReact = !args.includes("--no-react"); // ReAct loop by default, --no-react for single-shot
+const useReact = !args.includes("--no-react"); // agentic loop by default, --no-react for single-shot
 const description = args.filter((a) => !a.startsWith("--")).join(" ");
 
 if (!description) {
   console.error(
-    "Usage: node scripts/generate-app.mjs [--dry-run] [--force] [--no-react] <description>"
+    "Usage: node scripts/generate-app.mjs [--dry-run] [--force] [--no-react] <description>",
   );
   console.error(
-    '  e.g. node scripts/generate-app.mjs "brain lesion viewer with NIfTI overlay"'
+    '  e.g. node scripts/generate-app.mjs "brain lesion viewer with NIfTI overlay"',
   );
   process.exit(1);
 }
 
 // ReAct mode needs LLM_API_KEY or OPENAI_API_KEY; single-shot needs ANTHROPIC_API_KEY
 if (!useReact && !process.env.ANTHROPIC_API_KEY) {
-  console.error("ANTHROPIC_API_KEY environment variable is required for single-shot mode.");
+  console.error(
+    "ANTHROPIC_API_KEY environment variable is required for single-shot mode.",
+  );
   process.exit(1);
 }
 if (useReact && !process.env.LLM_API_KEY && !process.env.OPENAI_API_KEY) {
-  console.error("LLM_API_KEY or OPENAI_API_KEY environment variable is required for ReAct mode.");
+  console.error(
+    "LLM_API_KEY or OPENAI_API_KEY environment variable is required for ReAct mode.",
+  );
   process.exit(1);
 }
 
@@ -70,13 +84,13 @@ if (useReact && !process.env.LLM_API_KEY && !process.env.OPENAI_API_KEY) {
 let appPlanSchema, generatedAppSchema;
 if (!useReact) {
   appPlanSchema = JSON.parse(
-    await readFile(join(__dirname, "lib/schema/app-plan.schema.json"), "utf8")
+    await readFile(join(__dirname, "lib/schema/app-plan.schema.json"), "utf8"),
   );
   generatedAppSchema = JSON.parse(
     await readFile(
       join(__dirname, "lib/schema/generated-app.schema.json"),
-      "utf8"
-    )
+      "utf8",
+    ),
   );
 }
 
@@ -91,9 +105,14 @@ if (estimateTokens(catalogText) > 3000) {
 // No list_shared_components: the catalog is already in both system prompts, so a
 // tool that re-serves it only bought a round trip and a second copy in context.
 const actionList = [
-  "list_existing_apps", "read_app_source",
-  "list_app_files", "validate_astra_schema", "validate_syntax",
-].map((n) => `- ${n}`).join("\n");
+  "list_existing_apps",
+  "read_app_source",
+  "list_app_files",
+  "validate_astra_schema",
+  "validate_syntax",
+]
+  .map((n) => `- ${n}`)
+  .join("\n");
 
 // --- System prompts (single-shot fallback) ---
 const STEP1_SYSTEM = `You are an expert neuroimaging webapp architect. You design browser-native
@@ -149,12 +168,12 @@ let generatedApp;
 
 if (useReact) {
   // -----------------------------------------------------------------------
-  // ReAct mode: agentic Thought/Action/PAUSE/Observation loop
+  // Agentic mode: multi-turn tool-calling loop
   // -----------------------------------------------------------------------
   const knownActions = buildKnownActions({ root });
   const tools = buildToolDefinitions();
 
-  // Step 1: Plan via ReAct loop
+  // Step 1: Plan via agentic loop
   const step1System = [
     PREAMBLE,
     actionList,
@@ -205,7 +224,7 @@ field of the AppPlan unchanged.`,
     `Step 1 metrics: ${step1Result.metrics.total_turns} turns, ${step1Result.metrics.total_tokens} tokens` +
       (step1Result.metrics.rejected_answers
         ? `, ${step1Result.metrics.rejected_answers} answer(s) repaired`
-        : "")
+        : ""),
   );
 
   if (step1Result.metrics.status !== "success") {
@@ -213,7 +232,7 @@ field of the AppPlan unchanged.`,
     process.exit(1);
   }
 
-  // Step 2: Generate code via ReAct loop
+  // Step 2: Generate code via agentic loop
   const step2System = [
     PREAMBLE,
     actionList,
@@ -222,7 +241,7 @@ field of the AppPlan unchanged.`,
     `\nAvailable shared components:\n${catalogText}`,
   ].join("\n");
 
-  console.log("\nStep 2 (ReAct): Generating code...");
+  console.log("\nStep 2 (agentic): Generating code...");
   const step2Result = await runReactLoop({
     systemPrompt: step2System,
     question: `Generate all files for this app plan:\n\n${JSON.stringify(appPlan, null, 2)}\n\nRead existing apps for reference patterns. Validate each file. Produce the final Answer as a JSON object with a "files" key mapping filenames to contents.`,
@@ -232,8 +251,9 @@ field of the AppPlan unchanged.`,
     maxTurns: 20,
   });
   generatedApp = step2Result.answer;
-  console.log(`Step 2 metrics: ${step2Result.metrics.total_turns} turns, ${step2Result.metrics.total_tokens} tokens`);
-
+  console.log(
+    `Step 2 metrics: ${step2Result.metrics.total_turns} turns, ${step2Result.metrics.total_tokens} tokens`,
+  );
 } else {
   // -----------------------------------------------------------------------
   // Single-shot mode (original pipeline, --no-react)
@@ -255,7 +275,7 @@ field of the AppPlan unchanged.`,
         const { valid, errors } = await validateAnalysis(result.analysis);
         if (!valid) {
           throw new Error(
-            `ASTRA Analysis validation failed: ${JSON.stringify(errors, null, 2)}`
+            `ASTRA Analysis validation failed: ${JSON.stringify(errors, null, 2)}`,
           );
         }
       }
@@ -263,7 +283,7 @@ field of the AppPlan unchanged.`,
       return result;
     },
     [0.8, 0.6, 0.4],
-    "step1-reasoning"
+    "step1-reasoning",
   );
 
   console.log("\nStep 2: Generating code...");
@@ -291,14 +311,16 @@ field of the AppPlan unchanged.`,
       return result;
     },
     [0.2, 0.1, 0.0],
-    "step2-generation"
+    "step2-generation",
   );
 }
 
 console.log(`App plan: ${appPlan.name} - ${appPlan.title}`);
 console.log(`  Modality: ${appPlan.imagingModality}`);
 console.log(`  Viewer: ${appPlan.viewerType}`);
-console.log(`  Files: ${appPlan.fileManifest?.length || Object.keys(generatedApp.files || {}).length}`);
+console.log(
+  `  Files: ${appPlan.fileManifest?.length || Object.keys(generatedApp.files || {}).length}`,
+);
 
 // --- Write astra.yaml alongside app files ---
 if (appPlan.analysis) {
@@ -329,6 +351,6 @@ if (!dryRun) {
   console.log(`  pnpm install`);
   console.log(`  pnpm --filter ${appPlan.name} dev`);
   console.log(
-    `  pnpm --filter ${appPlan.name} build && pnpm --filter ${appPlan.name} test`
+    `  pnpm --filter ${appPlan.name} build && pnpm --filter ${appPlan.name} test`,
   );
 }

@@ -33,6 +33,9 @@ apps/musclemap/.tmp_model_env/
 apps/musclemap/.tmp_model_release/
 apps/musclemap/web/models/
 
+# Benchmark results
+scripts/benchmark/results/
+
 # Python
 __pycache__/
 *.pyc
