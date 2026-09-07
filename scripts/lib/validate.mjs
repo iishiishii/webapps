@@ -1,5 +1,6 @@
 // Validation using ASTRA JSON Schema (via Ajv) and @babel/parser for JS syntax.
 import Ajv from "ajv";
+import Ajv2020 from "ajv/dist/2020.js";
 import { readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +9,37 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 let _ajv;
 let _validateAnalysis;
+let _validateAppPlan;
+
+async function getAppPlanValidator() {
+  if (_validateAppPlan) return _validateAppPlan;
+  const schemaPath = join(__dirname, "schema", "app-plan.schema.json");
+  const schema = JSON.parse(await readFile(schemaPath, "utf8"));
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  _validateAppPlan = ajv.compile(schema);
+  return _validateAppPlan;
+}
+
+/** Validate the complete Step 1 output, including its ASTRA analysis. */
+export async function validateAppPlan(data) {
+  const validate = await getAppPlanValidator();
+  const envelopeValid = validate(data);
+  const errors = envelopeValid ? [] : [...(validate.errors || [])];
+
+  if (data?.analysis && typeof data.analysis === "object") {
+    const analysisResult = await validateAnalysis(data.analysis);
+    if (!analysisResult.valid) {
+      errors.push(
+        ...(analysisResult.errors || []).map((error) => ({
+          ...error,
+          instancePath: `/analysis${error.instancePath || ""}`,
+        })),
+      );
+    }
+  }
+
+  return { valid: errors.length === 0, errors: errors.length ? errors : null };
+}
 
 /**
  * Load the ASTRA JSON Schema and compile the Ajv validator.
@@ -17,7 +49,12 @@ async function getAnalysisValidator() {
   if (_validateAnalysis) return _validateAnalysis;
   const schemaPath = join(__dirname, "schema", "astra.schema.json");
   const schema = JSON.parse(await readFile(schemaPath, "utf8"));
-  _ajv = new Ajv({ allErrors: true, strict: false, validateSchema: false });
+  _ajv = new Ajv({
+    allErrors: true,
+    strict: false,
+    validateSchema: false,
+    formats: { "date-time": true },
+  });
   _validateAnalysis = _ajv.compile(schema);
   return _validateAnalysis;
 }

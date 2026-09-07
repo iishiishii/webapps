@@ -53,7 +53,8 @@
     },
     "registryFields": {
       "type": "object",
-      "required": ["runtime", "supportStatus", "shell", "toolchains"],
+      "required": ["runtime", "modelManifest", "supportStatus", "shell", "toolchains"],
+      "additionalProperties": false,
       "properties": {
         "runtime": { "type": "string", "enum": ["static-esm", "react-vite", "static-esm-rust"] },
         "modelManifest": { "type": ["string", "null"] },

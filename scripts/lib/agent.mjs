@@ -86,8 +86,8 @@ export function buildKnownActions({ root }) {
 // ---------------------------------------------------------------------------
 
 /** @returns {object[]} */
-export function buildToolDefinitions() {
-  return [
+export function buildToolDefinitions(names) {
+  const definitions = [
     {
       type: "function",
       function: {
@@ -155,6 +155,11 @@ export function buildToolDefinitions() {
       },
     },
   ];
+  if (!names) return definitions;
+  const allowed = new Set(names);
+  return definitions.filter(({ function: definition }) =>
+    allowed.has(definition.name),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +219,7 @@ function extractJsonAnswer(text) {
  * @param {object[]} opts.tools       - OpenAI-format tool definitions
  * @param {number}  [opts.temperature]
  * @param {number}  [opts.maxTurns]   - default 30
+ * @param {number}  [opts.maxTokens]  - maximum completion tokens per turn
  * @param {number}  [opts.maxObservationChars] - default 6000. Cap on the tool result stored in
  *   the conversation (not just logged). Every stored character is re-sent on every later turn.
  * @param {boolean} [opts.logTurns]   - default true
@@ -234,6 +240,7 @@ export async function runReactLoop({
   tools,
   temperature = 0,
   maxTurns = 30,
+  maxTokens = 8192,
   maxObservationChars = 6000,
   logTurns = true,
   model,
@@ -266,6 +273,7 @@ export async function runReactLoop({
       messages,
       tools,
       temperature,
+      maxTokens,
       model,
       baseUrl,
       apiKey,

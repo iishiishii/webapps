@@ -3,7 +3,7 @@
 // LLM pipeline: natural-language description -> working neuroimaging webapp.
 //
 // Two-step pipeline:
-//   Step 1 (reasoning, T=0.8): user description -> AppPlan (ASTRA Analysis + scaffolding)
+//   Step 1 (planning, T=0.4): user description -> AppPlan (ASTRA Analysis + scaffolding)
 //   Step 2 (generation, T=0.2): AppPlan -> file contents
 //
 // Two execution modes:
@@ -31,7 +31,7 @@ import {
   formatCatalog,
   estimateTokens,
 } from "./lib/catalog.mjs";
-import { validateAnalysis, validateFile } from "./lib/validate.mjs";
+import { validateAppPlan, validateFile } from "./lib/validate.mjs";
 import { writeApp, buildRegistryEntry } from "./lib/file-writer.mjs";
 import {
   runReactLoop,
@@ -40,7 +40,6 @@ import {
 } from "./lib/agent.mjs";
 import {
   PREAMBLE,
-  EXAMPLE,
   PLAN,
   GENERATE,
   ASTRA_CONTRACT,
@@ -101,19 +100,6 @@ if (estimateTokens(catalogText) > 3000) {
   catalogText = formatCatalog(catalog, true); // compact: name + module only
 }
 
-// --- Shared tool definitions for prompts ---
-// No list_shared_components: the catalog is already in both system prompts, so a
-// tool that re-serves it only bought a round trip and a second copy in context.
-const actionList = [
-  "list_existing_apps",
-  "read_app_source",
-  "list_app_files",
-  "validate_astra_schema",
-  "validate_syntax",
-]
-  .map((n) => `- ${n}`)
-  .join("\n");
-
 // --- System prompts (single-shot fallback) ---
 const STEP1_SYSTEM = `You are an expert neuroimaging webapp architect. You design browser-native
 neuroimaging tools for the Neurodesk webapps monorepo.
@@ -171,53 +157,51 @@ if (useReact) {
   // Agentic mode: multi-turn tool-calling loop
   // -----------------------------------------------------------------------
   const knownActions = buildKnownActions({ root });
-  const tools = buildToolDefinitions();
+  const step1Tools = buildToolDefinitions([
+    "list_existing_apps",
+    "list_app_files",
+    "read_app_source",
+  ]);
+  const step2Tools = buildToolDefinitions([
+    "list_existing_apps",
+    "list_app_files",
+    "read_app_source",
+    "validate_syntax",
+  ]);
 
   // Step 1: Plan via agentic loop
   const step1System = [
     PREAMBLE,
-    actionList,
-    "\n",
-    EXAMPLE,
-    "\n",
     PLAN,
     `\nAvailable shared components:\n${catalogText}`,
   ].join("\n");
 
-  // Gate the final Answer on ASTRA validation. Returning { ok: false } feeds the
-  // errors back into the loop so the agent repairs its plan in place -- a failed
-  // plan used to exit(1) and discard the entire run's context.
-  const validateAppPlan = async (answer) => {
-    if (!answer || !answer.analysis) return { ok: true };
-    const { valid, errors } = await validateAnalysis(answer.analysis);
+  // Validate both the scaffolding envelope and ASTRA analysis. Returning
+  // feedback keeps a repair inside the bounded planning loop.
+  const validateFinalAppPlan = async (answer) => {
+    const { valid, errors } = await validateAppPlan(answer);
     if (valid) return { ok: true };
     return {
       ok: false,
-      feedback: `Your Answer's "analysis" field failed ASTRA schema validation:
+      feedback: `Your Answer failed AppPlan validation:
 
 ${JSON.stringify(errors, null, 2)}
 
-Fix every error above. Re-read the ASTRA contract in your instructions -- the most
-common mistakes are: a missing top-level "id"; "decisions" as an array instead of an
-object keyed by decision id; an "input" carrying keys outside the allowed set (there is
-no "required" key); an input "type" other than "data"/"analysis"; and an output "type"
-other than "metric"/"figure"/"table"/"data"/"report".
-
-Call validate_astra_schema with the corrected analysis object. Only once it returns
-"Valid." should you output the full corrected AppPlan as the Answer. Keep every other
-field of the AppPlan unchanged.`,
+Fix every error and output the complete corrected AppPlan.`,
     };
   };
 
   console.log("Step 1 (ReAct): Generating app plan...");
   const step1Result = await runReactLoop({
     systemPrompt: step1System,
-    question: `Design a neuroimaging webapp for this description:\n\n${description}\n\nExplore the monorepo, then produce the final Answer as a JSON AppPlan.`,
+    question: `Design a neuroimaging webapp for this description:\n\n${description}\n\nProduce the final Answer as a complete JSON AppPlan.`,
     knownActions,
-    tools,
-    temperature: 0.8,
-    maxTurns: 15,
-    validateAnswer: validateAppPlan,
+    tools: step1Tools,
+    temperature: 0.4,
+    maxTurns: 5,
+    maxTokens: 3000,
+    maxObservationChars: 3000,
+    validateAnswer: validateFinalAppPlan,
   });
   appPlan = step1Result.answer;
   console.log(
@@ -235,8 +219,6 @@ field of the AppPlan unchanged.`,
   // Step 2: Generate code via agentic loop
   const step2System = [
     PREAMBLE,
-    actionList,
-    "\n",
     GENERATE,
     `\nAvailable shared components:\n${catalogText}`,
   ].join("\n");
@@ -246,7 +228,7 @@ field of the AppPlan unchanged.`,
     systemPrompt: step2System,
     question: `Generate all files for this app plan:\n\n${JSON.stringify(appPlan, null, 2)}\n\nRead existing apps for reference patterns. Validate each file. Produce the final Answer as a JSON object with a "files" key mapping filenames to contents.`,
     knownActions,
-    tools,
+    tools: step2Tools,
     temperature: 0.2,
     maxTurns: 20,
   });
@@ -271,13 +253,11 @@ field of the AppPlan unchanged.`,
         maxTokens: 2000,
       });
 
-      if (result.analysis) {
-        const { valid, errors } = await validateAnalysis(result.analysis);
-        if (!valid) {
-          throw new Error(
-            `ASTRA Analysis validation failed: ${JSON.stringify(errors, null, 2)}`,
-          );
-        }
+      const { valid, errors } = await validateAppPlan(result);
+      if (!valid) {
+        throw new Error(
+          `AppPlan validation failed: ${JSON.stringify(errors, null, 2)}`,
+        );
       }
 
       return result;

@@ -6,21 +6,9 @@
 export const PREAMBLE = `You are an expert neuroimaging webapp architect. You design and build
 browser-native neuroimaging tools for the Neurodesk webapps monorepo.
 
-Use the available tools to explore the monorepo before producing your answer.
+Use the available tools only when the request needs repository context.
 When you have gathered enough information, output your final Answer as a JSON object.
-
-Your available actions are:`;
-
-export const EXAMPLE = `Example workflow for designing a brain lesion segmentation app:
-
-1. Call list_shared_components to discover available components
-   -> ViewerController, WorkerBridge, SimpleFileIOController, etc.
-2. Call list_existing_apps to find reference implementations
-   -> calmar, vesselboost, spinalcordtoolbox, etc.
-3. Call read_app_source to inspect a similar app (e.g. calmar's index.html)
-   -> Learn the pipeline pattern, component usage, viewer setup
-4. Produce the final Answer as JSON:
-   {"name": "lesion-seg", "title": "Lesion Segmentation", ...}`;
+`;
 
 // ---------------------------------------------------------------------------
 // ASTRA contract
@@ -106,6 +94,29 @@ The monorepo uses:
 The AppPlan.analysis field describes the app's scientific workflow: the data it
 consumes, the artifacts it produces, and the methodological choices the user can make.
 
+Return exactly this AppPlan envelope. Every field shown is required:
+{
+  "name": "lowercase-kebab-case",
+  "title": "Human-readable title",
+  "description": "One-line registry description",
+  "imagingModality": "nifti",
+  "viewerType": "overlay",
+  "sharedComponents": ["named component exports"],
+  "workerMessages": [{ "type": "message-name", "payload": "TypeScript payload type" }],
+  "fileManifest": ["package.json", "index.html", "src/main.tsx", "src/App.tsx", "test/config.test.js"],
+  "registryFields": {
+    "runtime": "react-vite",
+    "modelManifest": null,
+    "supportStatus": "experimental",
+    "shell": "imaging-workspace",
+    "toolchains": ["node"]
+  },
+  "analysis": {}
+}
+Choose imagingModality from "nifti", "dicom", or "generic"; viewerType from
+"2d-slice", "3d-volume", "overlay", or "comparison"; supportStatus from
+"experimental" or "active"; and shell from "static-html" or "imaging-workspace".
+
 ${ASTRA_CONTRACT}
 
 Rules:
@@ -116,14 +127,9 @@ Rules:
 - File manifest lists all files to generate (src/main.tsx, src/App.tsx, etc.)
 - Model manifests are always null (researchers add them manually)
 
-Use the available tools to explore the monorepo before producing your plan.
-Inspect shared components and reference existing apps.
-
-MANDATORY before you output the final Answer: call the validate_astra_schema tool with
-your \`analysis\` object as the \`data\` argument. If it returns anything other than
-"Valid.", fix every reported error and call it again. Do not output the Answer until
-validate_astra_schema has returned "Valid." - an unvalidated Answer is discarded and the
-whole run is wasted.`;
+The shared-component catalog is already in the prompt. If repository context is needed,
+inspect at most one similar app before producing the plan. The complete AppPlan and its
+analysis are validated automatically after your Answer.`;
 
 export const GENERATE = `You are generating production React/TypeScript code for a neuroimaging webapp.
 Given an AppPlan, produce the file contents for every file in the fileManifest.
