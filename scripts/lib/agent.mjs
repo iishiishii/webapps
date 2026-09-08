@@ -226,7 +226,7 @@ function truncateObservation(text, limit, toolName) {
  * Try to extract a final JSON answer from text content.
  * Supports: Answer: {...}, ```json {...} ```, and raw JSON.
  */
-function extractJsonAnswer(text) {
+export function extractJsonAnswer(text) {
   const answerMatch = text.match(/Answer:\s*(\{.*\})\s*$/s);
   if (answerMatch) return answerMatch[1].trim();
 
@@ -237,6 +237,30 @@ function extractJsonAnswer(text) {
 
   const trimmed = text.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) return trimmed;
+
+  // Some OpenAI-compatible models prefix an otherwise valid answer with a
+  // sentence such as "Here is the plan:". Find the first balanced JSON object
+  // without being confused by braces or escaped quotes inside JSON strings.
+  for (let start = text.indexOf("{"); start !== -1; start = text.indexOf("{", start + 1)) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < text.length; i++) {
+      const char = text[i];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === '"') inString = false;
+        continue;
+      }
+      if (char === '"') inString = true;
+      else if (char === "{") depth++;
+      else if (char === "}" && --depth === 0) {
+        const candidate = text.slice(start, i + 1);
+        try { JSON.parse(candidate); return candidate; } catch { break; }
+      }
+    }
+  }
 
   return null;
 }
@@ -442,10 +466,10 @@ export async function runReactLoop({
             content: `Your answer was not valid JSON. Error: ${err.message}. Please fix and provide the Answer again.`,
           });
         }
-      } else if (i === 0) {
+      } else {
         messages.push({
           role: "user",
-          content: "Reminder: Please use the available tools or provide the final Answer JSON.",
+          content: "No complete JSON answer was detected. Provide the complete AppPlan now as one JSON object, with no prose and no tool call.",
         });
       }
     }

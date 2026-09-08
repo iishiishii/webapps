@@ -62,3 +62,17 @@ test("invalidates checkpoints when the model changes", async () => {
   await generateAppFiles({ appPlan: plan, root, model: "model-b", invoke });
   assert.equal(blueprintCalls, 2);
 });
+
+test("retries blueprint creation and checkpoints an exhausted failure", async () => {
+  const root = await fixture(); let calls = 0;
+  const invoke = async () => { calls++; return { value: { files: [], explanation: "not allowed" }, usage: {} }; };
+  let caught;
+  try { await generateAppFiles({ appPlan: plan, root, invoke }); } catch (error) { caught = error; }
+  assert.ok(caught);
+  assert.equal(calls, 3);
+  assert.equal(caught.metrics.failed_filename, "blueprint");
+  assert.equal(caught.metrics.blueprint_attempts, 3);
+  const failure = JSON.parse(await readFile(join(caught.metrics.cache_location, "failure.json"), "utf8"));
+  assert.equal(failure.stage, "blueprint");
+  assert.equal(failure.attempts, 3);
+});
