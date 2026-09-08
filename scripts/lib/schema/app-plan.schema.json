@@ -48,8 +48,9 @@
     },
     "fileManifest": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "Relative file paths to generate (e.g. src/main.tsx, src/App.tsx)"
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$" },
+      "description": "Safe relative paths including every canonical JavaScript template file"
     },
     "registryFields": {
       "type": "object",

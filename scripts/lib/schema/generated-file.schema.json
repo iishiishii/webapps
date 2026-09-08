@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GeneratedFile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["filename", "content"],
+  "properties": {
+    "filename": { "type": "string" },
+    "content": { "type": "string", "minLength": 1 }
+  }
+}

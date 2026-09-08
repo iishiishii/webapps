@@ -85,7 +85,7 @@ export const PLAN = `You are designing an AppPlan for a neuroimaging webapp.
 
 The monorepo uses:
 - pnpm workspaces with Turbo
-- Vite + React for new apps
+- Vite with the canonical JavaScript imaging-workspace template
 - @neurodesk/webapp-components shared library
 - NiiVue for neuroimaging visualization
 - ONNX Runtime Web for inference
@@ -102,8 +102,8 @@ Return exactly this AppPlan envelope. Every field shown is required:
   "imagingModality": "nifti",
   "viewerType": "overlay",
   "sharedComponents": ["named component exports"],
-  "workerMessages": [{ "type": "message-name", "payload": "TypeScript payload type" }],
-  "fileManifest": ["package.json", "index.html", "src/main.tsx", "src/App.tsx", "test/config.test.js"],
+  "workerMessages": [{ "type": "message-name", "payload": "JavaScript payload shape" }],
+  "fileManifest": ["package.json", "index.html", "src/main.js", "src/config.js", "src/worker.js", "vite.config.js", "eslint.config.js", "playwright.config.js", "public/_headers", "test/config.test.js", "e2e/smoke.spec.js"],
   "registryFields": {
     "runtime": "react-vite",
     "modelManifest": null,
@@ -121,10 +121,10 @@ ${ASTRA_CONTRACT}
 
 Rules:
 - App names are lowercase kebab-case
-- Generated apps use React + Vite + TypeScript
+- Generated apps use the canonical JavaScript + Vite imaging-workspace template
 - Import shared components from @neurodesk/webapp-components
 - Worker messages define the inference pipeline protocol
-- File manifest lists all files to generate (src/main.tsx, src/App.tsx, etc.)
+- File manifest includes every canonical template file plus scientific workers/modules required by the workflow
 - Model manifests are always null (researchers add them manually)
 
 The shared-component catalog is already in the prompt. Use read_app_template once to
@@ -132,23 +132,17 @@ inspect the canonical templates/app-template scaffold. Do not inspect existing a
 After reading the template, produce the complete plan immediately. The complete AppPlan
 and its analysis are validated automatically after your Answer.`;
 
-export const GENERATE = `You are generating production React/TypeScript code for a neuroimaging webapp.
-Given an AppPlan, produce the file contents for every file in the fileManifest.
+export const GENERATE = `You are generating one production JavaScript/Vite file for a neuroimaging webapp.
+Given an AppPlan, shared blueprint, target filename, and optional canonical template content,
+produce exactly that file.
 
 Rules:
-- Use React functional components with hooks
-- Import NiiVue from @niivue/niivue
 - Import shared components from @neurodesk/webapp-components
-- Use the NiivueViewer component from @neurodesk/webapp-components/viewer/react for the viewer
-- TypeScript with strict types
+- Follow the canonical imaging-workspace template and use src/main.js and src/config.js
 - Vite as the build tool
-- Each file must be syntactically valid
-- package.json must include all required dependencies
-- index.html must mount the React app
-- Include a basic test in test/config.test.js
-
-Use the available tools to read existing app source files for reference patterns,
-and validate each generated file before producing your final answer.`;
+- The target file must be nonempty and syntactically valid
+- Return exactly a JSON object with filename and content
+- Do not inspect existing apps or return any other file.`;
 
 export const EVALUATE = `You are evaluating a generated neuroimaging webapp for correctness,
 completeness, and adherence to monorepo conventions.

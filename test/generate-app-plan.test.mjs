@@ -18,7 +18,7 @@ const validPlan = {
   viewerType: "overlay",
   sharedComponents: ["NiivueViewer"],
   workerMessages: [{ type: "segment", payload: "{ volume: ArrayBuffer }" }],
-  fileManifest: ["package.json", "index.html", "src/main.tsx", "src/App.tsx"],
+  fileManifest: ["package.json", "index.html", "src/main.js", "src/config.js", "src/worker.js", "vite.config.js", "eslint.config.js", "playwright.config.js", "public/_headers", "test/config.test.js", "e2e/smoke.spec.js"],
   registryFields: {
     runtime: "react-vite",
     modelManifest: null,
@@ -48,6 +48,19 @@ test("validateAppPlan rejects missing scaffolding fields", async () => {
     ),
     ["imagingModality", "viewerType", "registryFields"],
   );
+});
+
+test("validateAppPlan rejects unsafe paths and missing canonical files", async () => {
+  const result = await validateAppPlan({ ...validPlan, fileManifest: ["package.json", "../escape.js"] });
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((error) => error.keyword === "safeRelativePath"));
+  assert.ok(result.errors.some((error) => error.keyword === "canonicalTemplate"));
+});
+
+test("validateAppPlan requires a worker module for a declared worker protocol", async () => {
+  const result = await validateAppPlan({ ...validPlan, fileManifest: validPlan.fileManifest.filter((path) => path !== "src/worker.js") });
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((error) => error.keyword === "scientificModule"));
 });
 
 test("validateAppPlan reports ASTRA errors under analysis", async () => {

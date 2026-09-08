@@ -6,6 +6,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+export const CANONICAL_TEMPLATE_FILES = ["package.json", "index.html", "src/main.js", "src/config.js", "vite.config.js", "eslint.config.js", "playwright.config.js", "public/_headers", "test/config.test.js", "e2e/smoke.spec.js"];
 
 let _ajv;
 let _validateAnalysis;
@@ -25,6 +26,16 @@ export async function validateAppPlan(data) {
   const validate = await getAppPlanValidator();
   const envelopeValid = validate(data);
   const errors = envelopeValid ? [] : [...(validate.errors || [])];
+  if (Array.isArray(data?.fileManifest)) {
+    const seen = new Set();
+    for (const path of data.fileManifest) {
+      if (typeof path !== "string" || !path || path.startsWith("/") || path.includes("\\") || path.split("/").some((part) => part === "." || part === "..")) errors.push({ instancePath: "/fileManifest", keyword: "safeRelativePath", message: `unsafe relative path: ${path}` });
+      if (seen.has(path)) errors.push({ instancePath: "/fileManifest", keyword: "uniqueItems", message: `duplicate path: ${path}` });
+      seen.add(path);
+    }
+    for (const path of CANONICAL_TEMPLATE_FILES) if (!seen.has(path)) errors.push({ instancePath: "/fileManifest", keyword: "canonicalTemplate", message: `must include ${path}` });
+    if (Array.isArray(data.workerMessages) && data.workerMessages.length > 0 && !data.fileManifest.some((path) => /(?:^|\/)workers?[^/]*\.js$/.test(path))) errors.push({ instancePath: "/fileManifest", keyword: "scientificModule", message: "workerMessages require a JavaScript worker module" });
+  }
 
   if (data?.analysis && typeof data.analysis === "object") {
     const analysisResult = await validateAnalysis(data.analysis);

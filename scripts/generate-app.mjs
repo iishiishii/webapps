@@ -25,13 +25,14 @@ import { readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { callLLM } from "./lib/call-llm.mjs";
+import { generateAppFiles, createGenerationAdapter } from "./lib/per-file-generation.mjs";
 import { retryWithDecay } from "./lib/retry.mjs";
 import {
   extractCatalog,
   formatCatalog,
   estimateTokens,
 } from "./lib/catalog.mjs";
-import { validateAppPlan, validateFile } from "./lib/validate.mjs";
+import { validateAppPlan } from "./lib/validate.mjs";
 import { writeApp, buildRegistryEntry } from "./lib/file-writer.mjs";
 import {
   runReactLoop,
@@ -41,7 +42,6 @@ import {
 import {
   PREAMBLE,
   PLAN,
-  GENERATE,
   ASTRA_CONTRACT,
 } from "./lib/prompts.mjs";
 
@@ -80,16 +80,10 @@ if (useReact && !process.env.LLM_API_KEY && !process.env.OPENAI_API_KEY) {
 }
 
 // --- Load schemas (only needed for single-shot mode) ---
-let appPlanSchema, generatedAppSchema;
+let appPlanSchema;
 if (!useReact) {
   appPlanSchema = JSON.parse(
     await readFile(join(__dirname, "lib/schema/app-plan.schema.json"), "utf8"),
-  );
-  generatedAppSchema = JSON.parse(
-    await readFile(
-      join(__dirname, "lib/schema/generated-app.schema.json"),
-      "utf8",
-    ),
   );
 }
 
@@ -106,7 +100,7 @@ neuroimaging tools for the Neurodesk webapps monorepo.
 
 The monorepo uses:
 - pnpm workspaces with Turbo
-- Vite + React for new apps
+- Vite with the canonical JavaScript imaging-workspace template
 - @neurodesk/webapp-components shared library
 - NiiVue for neuroimaging visualization
 - ONNX Runtime Web for inference
@@ -127,30 +121,15 @@ ${ASTRA_CONTRACT}
 
 Rules:
 - App names are lowercase kebab-case
-- Generated apps use React + Vite + TypeScript
+- Generated apps use the canonical JavaScript + Vite imaging-workspace template
 - Import shared components from @neurodesk/webapp-components
 - Worker messages define the inference pipeline protocol
-- File manifest lists all files to generate (src/main.tsx, src/App.tsx, etc.)
+- File manifest includes package.json, index.html, src/main.js, src/config.js, vite.config.js, eslint.config.js, playwright.config.js, public/_headers, test/config.test.js, and e2e/smoke.spec.js, plus required scientific modules such as src/worker.js when worker messages are declared
 - Model manifests are always null (researchers add them manually)`;
-
-const STEP2_SYSTEM = `You are an expert React/TypeScript developer generating production code for a
-neuroimaging webapp. Given an AppPlan, produce the file contents for every file
-in the fileManifest.
-
-Rules:
-- Use React functional components with hooks
-- Import NiiVue from @niivue/niivue
-- Import shared components from @neurodesk/webapp-components
-- Use the NiivueViewer component from @neurodesk/webapp-components/viewer/react for the viewer
-- TypeScript with strict types
-- Vite as the build tool
-- Each file must be syntactically valid
-- package.json must include all required dependencies
-- index.html must mount the React app
-- Include a basic test in test/config.test.js`;
 
 let appPlan;
 let generatedApp;
+let step2Metrics;
 
 if (useReact) {
   // -----------------------------------------------------------------------
@@ -158,12 +137,6 @@ if (useReact) {
   // -----------------------------------------------------------------------
   const knownActions = buildKnownActions({ root });
   const step1Tools = buildToolDefinitions(["read_app_template"]);
-  const step2Tools = buildToolDefinitions([
-    "list_existing_apps",
-    "list_app_files",
-    "read_app_source",
-    "validate_syntax",
-  ]);
 
   // Step 1: Plan via agentic loop
   const step1System = [
@@ -213,26 +186,6 @@ Fix every error and output the complete corrected AppPlan.`,
     process.exit(1);
   }
 
-  // Step 2: Generate code via agentic loop
-  const step2System = [
-    PREAMBLE,
-    GENERATE,
-    `\nAvailable shared components:\n${catalogText}`,
-  ].join("\n");
-
-  console.log("\nStep 2 (agentic): Generating code...");
-  const step2Result = await runReactLoop({
-    systemPrompt: step2System,
-    question: `Generate all files for this app plan:\n\n${JSON.stringify(appPlan, null, 2)}\n\nRead existing apps for reference patterns. Validate each file. Produce the final Answer as a JSON object with a "files" key mapping filenames to contents.`,
-    knownActions,
-    tools: step2Tools,
-    temperature: 0.2,
-    maxTurns: 20,
-  });
-  generatedApp = step2Result.answer;
-  console.log(
-    `Step 2 metrics: ${step2Result.metrics.total_turns} turns, ${step2Result.metrics.total_tokens} tokens`,
-  );
 } else {
   // -----------------------------------------------------------------------
   // Single-shot mode (original pipeline, --no-react)
@@ -263,33 +216,25 @@ Fix every error and output the complete corrected AppPlan.`,
     "step1-reasoning",
   );
 
-  console.log("\nStep 2: Generating code...");
+}
 
-  generatedApp = await retryWithDecay(
-    async ({ temperature }) => {
-      const result = await callLLM({
-        systemPrompt: STEP2_SYSTEM,
-        userMessage: `Generate all files for this app plan:\n\n${JSON.stringify(appPlan, null, 2)}`,
-        schema: generatedAppSchema,
-        toolName: "generate_app_files",
-        temperature,
-        maxTokens: 8000,
-      });
+console.log(`\nStep 2 (${useReact ? "isolated chat" : "structured"}): Generating files...`);
+try {
+  const model = process.env.LLM_MODEL || (useReact || process.env.LLM_PROVIDER === "openai" ? "gpt-4o" : "claude-sonnet-4-20250514");
+  const result = await generateAppFiles({ appPlan, root, model, invoke: createGenerationAdapter({ structured: !useReact }) });
+  generatedApp = { files: result.files };
+  step2Metrics = result.metrics;
+  console.log(`Step 2 metrics: ${step2Metrics.generated_files} generated, ${step2Metrics.reused_files} reused, ${step2Metrics.attempts} attempts, ${step2Metrics.input_tokens + step2Metrics.output_tokens} tokens`);
+} catch (error) {
+  const metrics = error.metrics || {};
+  console.error(`Step 2 failed (${metrics.failed_filename || "blueprint"}): ${error.message}`);
+  if (metrics.cache_location) console.error(`Checkpoint: ${metrics.cache_location}`);
+  process.exit(1);
+}
 
-      const errors = [];
-      for (const [filename, content] of Object.entries(result.files)) {
-        const { valid, error } = await validateFile(filename, content);
-        if (!valid) errors.push(error);
-      }
-      if (errors.length > 0) {
-        throw new Error(`File validation failed:\n${errors.join("\n")}`);
-      }
-
-      return result;
-    },
-    [0.2, 0.1, 0.0],
-    "step2-generation",
-  );
+if (!generatedApp || !generatedApp.files || typeof generatedApp.files !== "object" || Array.isArray(generatedApp.files)) {
+  console.error("Step 2 failed: invalid output; expected a files object");
+  process.exit(1);
 }
 
 console.log(`App plan: ${appPlan.name} - ${appPlan.title}`);

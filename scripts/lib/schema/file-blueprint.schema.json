@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FileBlueprint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["files"],
+  "properties": {
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["filename", "action", "imports", "exports", "responsibility"],
+        "properties": {
+          "filename": { "type": "string" },
+          "action": { "enum": ["keep", "modify", "create"] },
+          "imports": { "type": "array", "items": { "type": "string" } },
+          "exports": { "type": "array", "items": { "type": "string" } },
+          "responsibility": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
