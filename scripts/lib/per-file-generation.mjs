@@ -4,7 +4,7 @@ import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { callChat, callLLM } from "./call-llm.mjs";
 import { validateFile } from "./validate.mjs";
 
-export const BLUEPRINT_PROMPT_VERSION = "per-file-blueprint-v1";
+export const BLUEPRINT_PROMPT_VERSION = "per-file-blueprint-v2";
 export const TEMPLATE_FILES = [
   "package.json", "index.html", "src/main.js", "src/config.js",
   "vite.config.js", "eslint.config.js", "playwright.config.js",
@@ -88,19 +88,27 @@ export async function generateAppFiles({ appPlan, root, model = process.env.LLM_
   const hash = createHash("sha256").update(generationContext).digest("hex");
   const cacheDir = join(root, ".generate-app-cache", appPlan.name, hash);
   await mkdir(join(cacheDir, "files"), { recursive: true });
-  const metrics = { generated_files: 0, reused_files: 0, attempts: 0, input_tokens: 0, output_tokens: 0, failed_filename: null, cache_location: cacheDir };
+  const metrics = { generated_files: 0, reused_files: 0, attempts: 0, blueprint_attempts: 0, input_tokens: 0, output_tokens: 0, failed_filename: null, cache_location: cacheDir };
   const addUsage = (usage = {}) => { metrics.input_tokens += usage.prompt_tokens || usage.input_tokens || 0; metrics.output_tokens += usage.completion_tokens || usage.output_tokens || 0; };
 
   let blueprint;
   try { blueprint = validateBlueprint(JSON.parse(await readFile(join(cacheDir, "blueprint.json"), "utf8")), manifest, template); }
   catch {
-    try {
-      const response = await invoke({ systemPrompt: "Create a concise implementation blueprint. Return JSON only.", userMessage: `Assign every manifest file exactly one action (keep, modify, create), imports, exports, and responsibility. Template files may be keep/modify; new files must be create. Modify the entry point and configuration when necessary so every scientific module is reachable and all dependencies are declared.\nAppPlan:\n${JSON.stringify(appPlan)}\nCanonical template:\n${JSON.stringify(template)}`, schema: blueprintSchema, toolName: "create_file_blueprint", maxTokens: 4000, model });
-      addUsage(response.usage); blueprint = validateBlueprint(response.value, manifest, template);
-      await writeFile(join(cacheDir, "blueprint.json"), JSON.stringify(blueprint, null, 2));
-    } catch (cause) {
+    let lastError;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      metrics.blueprint_attempts++;
+      try {
+        const response = await invoke({ systemPrompt: `Create a concise implementation blueprint. Return one JSON object and no commentary or markdown. The top-level object must have exactly one key, "files". Each files entry must have exactly filename, action, imports, exports, and responsibility.`, userMessage: `Assign every manifest file exactly one action (keep, modify, create), imports, exports, and responsibility. Template files may be keep/modify; new files must be create. Modify the entry point and configuration when necessary so every scientific module is reachable and all dependencies are declared.\nAppPlan:\n${JSON.stringify(appPlan)}\nCanonical template:\n${JSON.stringify(template)}`, schema: blueprintSchema, toolName: "create_file_blueprint", maxTokens: 4000, model });
+        addUsage(response.usage); blueprint = validateBlueprint(response.value, manifest, template);
+        await writeFile(join(cacheDir, "blueprint.json"), JSON.stringify(blueprint, null, 2));
+        lastError = null;
+        break;
+      } catch (error) { lastError = error; }
+    }
+    if (lastError) {
       metrics.failed_filename = "blueprint";
-      const error = new Error(`Failed to create blueprint: ${cause.message}`, { cause }); error.metrics = metrics; throw error;
+      await writeFile(join(cacheDir, "failure.json"), JSON.stringify({ stage: "blueprint", attempts: metrics.blueprint_attempts, error: lastError.message, timestamp: new Date().toISOString() }, null, 2));
+      const error = new Error(`Failed to create blueprint after ${maxAttempts} attempts: ${lastError.message}`, { cause: lastError }); error.metrics = metrics; throw error;
     }
   }
 

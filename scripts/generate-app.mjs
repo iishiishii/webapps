@@ -224,7 +224,7 @@ try {
   const result = await generateAppFiles({ appPlan, root, model, invoke: createGenerationAdapter({ structured: !useReact }) });
   generatedApp = { files: result.files };
   step2Metrics = result.metrics;
-  console.log(`Step 2 metrics: ${step2Metrics.generated_files} generated, ${step2Metrics.reused_files} reused, ${step2Metrics.attempts} attempts, ${step2Metrics.input_tokens + step2Metrics.output_tokens} tokens`);
+  console.log(`Step 2 metrics: ${step2Metrics.generated_files} generated, ${step2Metrics.reused_files} reused, ${step2Metrics.blueprint_attempts} blueprint attempts, ${step2Metrics.attempts} file attempts, ${step2Metrics.input_tokens + step2Metrics.output_tokens} tokens`);
 } catch (error) {
   const metrics = error.metrics || {};
   console.error(`Step 2 failed (${metrics.failed_filename || "blueprint"}): ${error.message}`);
