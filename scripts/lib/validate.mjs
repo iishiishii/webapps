@@ -30,6 +30,7 @@ export async function validateAppPlan(data) {
     const seen = new Set();
     for (const path of data.fileManifest) {
       if (typeof path !== "string" || !path || path.startsWith("/") || path.includes("\\") || path.split("/").some((part) => part === "." || part === "..")) errors.push({ instancePath: "/fileManifest", keyword: "safeRelativePath", message: `unsafe relative path: ${path}` });
+      if (typeof path === "string" && /\.(json|html?|jsx?|tsx?|css|ya?ml)\.\1$/i.test(path)) errors.push({ instancePath: "/fileManifest", keyword: "duplicateExtension", message: `duplicate file extension: ${path}` });
       if (seen.has(path)) errors.push({ instancePath: "/fileManifest", keyword: "uniqueItems", message: `duplicate path: ${path}` });
       seen.add(path);
     }
@@ -129,15 +130,18 @@ export async function validateFile(filename, content) {
     return validateSyntax(content, filename);
   }
   if (filename.endsWith(".html")) {
-    // Basic tag balance check
-    const opens = (content.match(/<[a-z][^/]*>/gi) || []).length;
-    const closes = (content.match(/<\/[a-z]+>/gi) || []).length;
-    if (Math.abs(opens - closes) > 3) {
-      return {
-        valid: false,
-        error: `${filename}: HTML tag imbalance (${opens} opens, ${closes} closes)`,
-      };
+    const voidElements = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+    const sanitized = content.replace(/<!--[\s\S]*?-->/g, "").replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "<$1></$1>");
+    const stack = [];
+    for (const match of sanitized.matchAll(/<\s*(\/?)\s*([a-z][a-z0-9-]*)\b[^>]*>/gi)) {
+      const closing = Boolean(match[1]);
+      const tag = match[2].toLowerCase();
+      if (voidElements.has(tag) || (!closing && /\/\s*>$/.test(match[0]))) continue;
+      if (!closing) stack.push(tag);
+      else if (stack.pop() !== tag) return { valid: false, error: `${filename}: unexpected or misnested closing </${tag}>` };
     }
+    if (stack.length) return { valid: false, error: `${filename}: unclosed HTML tag(s): ${stack.join(", ")}` };
+    if (!/<html\b/i.test(content) || !/<body\b/i.test(content)) return { valid: false, error: `${filename}: expected a complete document with html and body elements` };
     return { valid: true, error: null };
   }
   // YAML, CSS, etc. -- pass through

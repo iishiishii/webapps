@@ -4,7 +4,7 @@ import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { callChat, callLLM } from "./call-llm.mjs";
 import { validateFile } from "./validate.mjs";
 
-export const BLUEPRINT_PROMPT_VERSION = "per-file-blueprint-v2";
+export const BLUEPRINT_PROMPT_VERSION = "per-file-generation-v3";
 export const TEMPLATE_FILES = [
   "package.json", "index.html", "src/main.js", "src/config.js",
   "vite.config.js", "eslint.config.js", "playwright.config.js",
@@ -23,10 +23,17 @@ const blueprintSchema = {
     },
   } } },
 };
-const fileSchema = {
-  type: "object", additionalProperties: false, required: ["filename", "content"],
-  properties: { filename: { type: "string" }, content: { type: "string", minLength: 1 } },
-};
+function fileSchema(filename) {
+  return { type: "object", additionalProperties: false, required: ["filename", "content"], properties: { filename: { const: filename }, content: { type: "string", minLength: 1 } } };
+}
+
+function fileRequirements(filename) {
+  if (filename === "package.json") return "content must be a valid package.json document; set its package name to the AppPlan name";
+  if (filename.endsWith(".html")) return "content must be a complete HTML document with correctly nested and explicitly balanced non-void tags; preserve required Vite entry scripts";
+  if (/\.(?:js|jsx|mjs|ts|tsx)$/.test(filename)) return "content must be syntactically valid source code and follow the blueprint imports and exports";
+  if (filename.endsWith(".json")) return "content must be one valid JSON document";
+  return "content must be the complete nonempty text of the target file";
+}
 
 export function isSafeRelativePath(path) {
   return typeof path === "string" && path.length > 0 && path === posix.normalize(path) &&
@@ -127,14 +134,15 @@ export async function generateAppFiles({ appPlan, root, model = process.env.LLM_
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       metrics.attempts++;
       try {
-        const response = await invoke({ systemPrompt: "Generate exactly one production file. Return JSON only with filename and content.", userMessage: `AppPlan:\n${JSON.stringify(appPlan)}\nBlueprint:\n${JSON.stringify(blueprint)}\nTarget:\n${item.filename}\nOriginal template content:\n${stamped ?? "(new file)"}`, schema: fileSchema, toolName: "generate_app_file", maxTokens: 12000, model });
+        const retryGuidance = lastError ? `\nThe prior fresh attempt was rejected for this reason: ${lastError.message}\nCorrect that issue without including the prior response.` : "";
+        const response = await invoke({ systemPrompt: `Generate exactly one production file. Return one JSON object with exactly two keys: "filename" and "content". filename must be exactly ${JSON.stringify(item.filename)}. content must be the complete raw file text encoded as a JSON string, not markdown and not a second filename. ${fileRequirements(item.filename)}.`, userMessage: `AppPlan:\n${JSON.stringify(appPlan)}\nBlueprint:\n${JSON.stringify(blueprint)}\nTarget filename (copy exactly; never add an extension):\n${item.filename}\nOriginal template content:\n${stamped ?? "(new file)"}${retryGuidance}`, schema: fileSchema(item.filename), toolName: "generate_app_file", maxTokens: 12000, model });
         addUsage(response.usage); const result = response.value;
         if (!result || Object.keys(result).sort().join(",") !== "content,filename" || result.filename !== item.filename || typeof result.content !== "string" || !result.content.trim()) throw new Error("invalid per-file response shape, filename, or content");
         const checked = await validateFile(item.filename, result.content); if (!checked.valid) throw new Error(checked.error);
         files[item.filename] = result.content; metrics.generated_files++; await mkdir(dirname(cacheFile), { recursive: true }); await writeFile(cacheFile, JSON.stringify(result)); lastError = null; break;
       } catch (error) { lastError = error; }
     }
-    if (lastError) { metrics.failed_filename = item.filename; const error = new Error(`Failed to generate ${item.filename} after ${maxAttempts} attempts: ${lastError.message}`); error.metrics = metrics; throw error; }
+    if (lastError) { metrics.failed_filename = item.filename; await writeFile(join(cacheDir, "failure.json"), JSON.stringify({ stage: "file", filename: item.filename, attempts: maxAttempts, error: lastError.message, timestamp: new Date().toISOString() }, null, 2)); const error = new Error(`Failed to generate ${item.filename} after ${maxAttempts} attempts: ${lastError.message}`); error.metrics = metrics; throw error; }
   }
   const actual = Object.keys(files).sort(); const expected = [...manifest].sort();
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error("Generated files do not exactly cover the manifest");

@@ -63,6 +63,12 @@ test("validateAppPlan requires a worker module for a declared worker protocol", 
   assert.ok(result.errors.some((error) => error.keyword === "scientificModule"));
 });
 
+test("validateAppPlan rejects duplicated file extensions", async () => {
+  const result = await validateAppPlan({ ...validPlan, fileManifest: [...validPlan.fileManifest, "package.json.json"] });
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((error) => error.keyword === "duplicateExtension"));
+});
+
 test("validateAppPlan reports ASTRA errors under analysis", async () => {
   const result = await validateAppPlan({
     ...validPlan,

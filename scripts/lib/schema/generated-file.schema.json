@@ -5,7 +5,7 @@
   "additionalProperties": false,
   "required": ["filename", "content"],
   "properties": {
-    "filename": { "type": "string" },
+    "filename": { "type": "string", "description": "Must exactly equal the requested target filename; the runtime schema specializes this with const." },
     "content": { "type": "string", "minLength": 1 }
   }
 }
